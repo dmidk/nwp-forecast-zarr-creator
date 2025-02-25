@@ -1,0 +1,20 @@
+[project]
+name = "zarrcreator"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Kasper Stener Hintz", email = "kah@dmi.dk"},
+]
+dependencies = [
+    "loguru>=0.7.3",
+    "dmidc[harmonie-grib] @ git+https://gitlab.dmi.dk/nwp/data-catalog@v0.5.0",
+    "rechunker>=0.5.2",
+    "fsspec>=2024.12.0",
+]
+requires-python = ">=3.10"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false
