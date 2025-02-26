@@ -17,6 +17,11 @@ import dmidc.utils
 from dmidc.utils import normalise_duration
 import xarray as xr
 
+import gribscan
+
+# set the eccodes definitions path, older versions of eccodes require this
+gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
+
 forecast_duration = "PT3H"
 
 def read_source(source):
