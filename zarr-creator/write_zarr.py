@@ -31,6 +31,13 @@ def write_zarr(ds, fp_out, overwrite=True, temp_dir=None):
 
     zarr_filepath = fp_out
     zarr_filepath.parent.mkdir(parents=True, exist_ok=True)
+    
+    if Path(fp_out).exists():
+        if overwrite:
+            shutil.rmtree(fp_out)
+        else:
+            logger.error(f"{fp_out} already exists. Set overwrite=True to overwrite.")
+
 
 
     fs = fsspec.filesystem("file")
@@ -108,23 +115,39 @@ def write_zarr(ds, fp_out, overwrite=True, temp_dir=None):
 
     print(ds)
     print(ds.x.encoding)
+    print(f"Type of ds: {type(ds)}")  # Should be <xarray.Dataset>
+    print(f"Type of fp_out: {type(fp_out)}")  # Should be <pathlib.Path>
+    print(f"fp_out: {fp_out}")  # Check if it’s a valid path
+    print(f"Target Chunks: {target_chunks}")  # Debug output
 
-    try:
-        r = rechunker.rechunk(
-            ds,
-            target_chunks=target_chunks,
-            max_mem="1GB",
-            target_store=target_store, # open("/dmidata/scratch/10day/kah/dini2.zarr","wb"),
-            temp_store=temp_dir,
-        )
+    print(f"Type of target_store: {type(target_store)}")
+    
+    ds.encoding = {}
+    ds.to_zarr(target_store, mode="w", compute=True, consolidated=True)
 
-        logger.info(f"writing to {fp_out}")
-        r.execute()
-        logger.info(r)
-    finally:
-        shutil.rmtree(temp_dir)
 
-    consolidate_metadata(mapper)
+    # try:
+    #     r = rechunker.rechunk(
+    #         ds,
+    #         target_chunks=target_chunks,
+    #         max_mem="1GB",
+    #         target_store=target_store, # open("/dmidata/scratch/10day/kah/dini2.zarr","wb"),
+    #         temp_store=temp_dir,
+    #     )
+
+    #     logger.info(f"writing to {fp_out}")
+    #     print(f"Type of ds: {type(ds)}")  # Should be <xarray.Dataset>
+    #     print(f"Type of target_store: {type(target_store)}")  # Should be a Zarr store, not a string
+    #     print(f"Type of temp_store: {type(temp_dir)}")  # Should be <pathlib.Path>
+    #     print(f"Target store path: {target_store}")  # Check if it's a valid Zarr store
+    #     print(f"Temp store path: {temp_dir}")  # Check if temp directory exists
+
+    #     r.execute()
+    #     logger.info(r)
+    # finally:
+    #     shutil.rmtree(temp_dir)
+
+    # consolidate_metadata(mapper)
 
     logger.info("done!", flush=True)
 

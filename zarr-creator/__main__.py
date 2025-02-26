@@ -27,5 +27,7 @@ def cli():
     
 
 if __name__ == "__main__":
-    with logger.catch():
-        cli()
+    import ipdb
+    with ipdb.launch_ipdb_on_exception():
+        with logger.catch(reraise=True):
+            cli()

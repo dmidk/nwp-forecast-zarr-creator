@@ -17,6 +17,7 @@ import dmidc.utils
 from dmidc.utils import normalise_duration
 import xarray as xr
 
+forecast_duration = "PT3H"
 
 def read_source(source):
 
@@ -26,15 +27,19 @@ def read_source(source):
 
     logger.info(f"Reading source {source} at {t_analysis}")
 
+    t_analysis = datetime.datetime(2025, 2, 17, 1)
+
     if source == "dinisf":
         ds = dmidc.harmonie.load(
             suite_name="DINI",
             analysis_time=t_analysis,
             data_kind="sf",
             storage_platform="pds_grib",
+            short_name="u",
+            level=10,
             pds_receive_path="/mnt/zarr-from-dini/",
             level_type="heightAboveGround",
-            forecast_duration=normalise_duration(f"PT{54}H"),
+            forecast_duration=normalise_duration(forecast_duration),
         )
     else:
         logger.error(f"Unknown source {source}")
