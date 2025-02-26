@@ -12,6 +12,7 @@ dependencies = [
     "dmidc[harmonie-grib] @ file:///home/ec2-user/data-catalog",
     "ipdb>=0.13.13",
     "dask<=2024.11.2",
+    "zarrdump>=0.4.2",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

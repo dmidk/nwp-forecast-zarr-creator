@@ -5,7 +5,7 @@
 groups = ["default"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:8a37217380abd0f69c74a9b54ea79603a9eef921c56d79623b4d72e5ddb1cf92"
+content_hash = "sha256:262966408e9aa40aab1c5644bc8e2ecb8694e77e4cb2f6ca143f28eb0c802599"
 
 [[metadata.targets]]
 requires_python = ">=3.10"
@@ -1578,6 +1578,23 @@ dependencies = [
 files = [
     {file = "zarr-2.18.3-py3-none-any.whl", hash = "sha256:b1f7dfd2496f436745cdd4c7bcf8d3b4bc1dceef5fdd0d589c87130d842496dd"},
     {file = "zarr-2.18.3.tar.gz", hash = "sha256:2580d8cb6dd84621771a10d31c4d777dca8a27706a1a89b29f42d2d37e2df5ce"},
+]
+
+[[package]]
+name = "zarrdump"
+version = "0.4.2"
+requires_python = ">=3.8"
+summary = "Describe zarr stores from the command line."
+groups = ["default"]
+dependencies = [
+    "click>=7.0.0",
+    "fsspec>=0.7.0",
+    "xarray>=0.15.0",
+    "zarr<3,>=2.3.0",
+]
+files = [
+    {file = "zarrdump-0.4.2-py3-none-any.whl", hash = "sha256:c8f5fd23e21975ced4503c80ec9acb40013fcfc76ed7e41da224183453dc4a0c"},
+    {file = "zarrdump-0.4.2.tar.gz", hash = "sha256:80f9fc589c6356a9be87b7832a91e45ed4916bd3de356ba58715d22f357272c5"},
 ]
 
 [[package]]
