@@ -13,8 +13,6 @@ from loguru import logger
 # set the eccodes definitions path, older versions of eccodes require this
 gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
 
-forecast_duration = "PT3H"
-
 
 def read_source(
     source_name: str, t_analysis: datetime.datetime, forecast_duration: str
