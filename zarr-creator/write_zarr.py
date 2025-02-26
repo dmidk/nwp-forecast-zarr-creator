@@ -1,16 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import os
-import warnings
-import sys
-from loguru import logger
-from pathlib import Path
-import fsspec
-import rechunker
-from zarr.convenience import consolidate_metadata
-import xarray as xr
 import shutil
 import tempfile
+import warnings
+from pathlib import Path
+
+import fsspec
+from loguru import logger
 
 
 def write_zarr(ds, fp_out, rechunk_to, overwrite=True, temp_dir=None):
@@ -40,7 +36,7 @@ def write_zarr(ds, fp_out, rechunk_to, overwrite=True, temp_dir=None):
         raise Exception(f"fp_out must end with .zarr, got {fp_out}")
 
     fp_out.parent.mkdir(parents=True, exist_ok=True)
-    
+
     if Path(fp_out).exists():
         if overwrite:
             shutil.rmtree(fp_out)
@@ -58,7 +54,6 @@ def write_zarr(ds, fp_out, rechunk_to, overwrite=True, temp_dir=None):
                 f" size ({rechunk_to[d]} > {dim_len}). Reducing to dimension size."
             )
             rechunk_to[d] = dim_len
-
 
     target_chunks = {}
     for d in ds.dims:

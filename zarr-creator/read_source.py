@@ -1,30 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import os
-import sys
 import datetime
-from loguru import logger
-import shutil
-from pathlib import Path
-
-try:
-    from collections.abc import Mapping
-except ImportError:
-    from collections import Mapping
+import sys
 
 import dmidc.harmonie
 import dmidc.utils
-from dmidc.utils import normalise_duration
-import xarray as xr
-
 import gribscan
+import xarray as xr
+from dmidc.utils import normalise_duration
+from loguru import logger
 
 # set the eccodes definitions path, older versions of eccodes require this
 gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
 
 forecast_duration = "PT3H"
 
-def read_source(source_name: str, t_analysis: datetime.datetime, forecast_duration: str) -> xr.Dataset:
+
+def read_source(
+    source_name: str, t_analysis: datetime.datetime, forecast_duration: str
+) -> xr.Dataset:
     """
     Read the source data for the given source name, analysis time and forecast duration.
 

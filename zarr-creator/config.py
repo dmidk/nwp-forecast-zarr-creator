@@ -1,11 +1,9 @@
-from pathlib import Path
-
 # The "data collection" may contain multiple named parts (each will be put in its own zarr archive)
 # Each part may contain multiple "level types" (e.g. heightAboveGround, etc)
 # and a name-mapping may also be defined
 
 DATA_COLLECTION = dict(
-    description=f"All prognostic variables on all levels",
+    description="All prognostic variables on all levels",
     # x and y chunksize are created so that domain is split into 3x2=6 roughly
     # equal chunks that we time chunksize of 256 gives ~100MB chunks for each
     # level/single-level field
@@ -121,4 +119,3 @@ DATA_COLLECTION = dict(
         ),
     ),
 )
-
