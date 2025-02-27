@@ -51,6 +51,14 @@ def _setup_argparse():
         required=False,
     )
 
+    argparser.add_argument(
+        "--pds_receive_path",
+        type=str,
+        help="Path to the PDS receive directory",
+        default="/mnt/zarr-from-dini/",
+        required=False,
+    )
+
     argparser.add_argument("--log-level", default="INFO", help="The log level to use")
 
     argparser.add_argument("--log-file", default=None, help="The file to log to")
@@ -86,6 +94,7 @@ def cli(argv=None):
         source_name=args.source,
         t_analysis=args.analysis_time,
         forecast_duration=args.forecast_duration,
+        pds_receive_path=args.pds_receive_path,
     )
 
     write_zarr(ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING)

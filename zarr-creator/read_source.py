@@ -15,7 +15,10 @@ gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
 
 
 def read_source(
-    source_name: str, t_analysis: datetime.datetime, forecast_duration: str
+    source_name: str,
+    t_analysis: datetime.datetime,
+    forecast_duration: str,
+    pds_receive_path: str,
 ) -> xr.Dataset:
     """
     Read the source data for the given source name, analysis time and forecast duration.
@@ -39,7 +42,7 @@ def read_source(
             storage_platform="pds_grib",
             short_name="u",
             level=10,
-            pds_receive_path="/mnt/zarr-from-dini/",
+            pds_receive_path=pds_receive_path,
             level_type="heightAboveGround",
             forecast_duration=normalise_duration(forecast_duration),
         )
