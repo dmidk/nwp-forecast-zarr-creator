@@ -43,8 +43,8 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
         else:
             logger.error(f"{fp_out} already exists. Set overwrite=True to overwrite.")
 
-    fs = fsspec.filesystem("file")
-    mapper = fs.get_mapper(fp_out)
+    # fs = fsspec.filesystem("file")
+    # mapper = fs.get_mapper(fp_out)
 
     for d in ds.dims:
         dim_len = len(ds[d])
@@ -65,7 +65,7 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
         # target_chunks[v] = {d: target_chunks[d] for d in ds[v].dims}
         target_chunks[v] = {d: rechunk_to.get(d, ds[d].size) for d in ds[v].dims}
 
-    target_store = mapper
+    # target_store = mapper
 
     if temp_dir is None:
         temp_dir = Path(tempfile.TemporaryDirectory().name)
@@ -78,7 +78,7 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
         ds[var_name].encoding = {}
 
     target = fsspec.get_mapper(
-        f"s3://harmonie-zarr/dini/{t_analysis}/{target_store}",
+        f"s3://harmonie-zarr/dini/{t_analysis}/{fp_out.name}",
         client_kwargs={"region_name": "eu-central-1"},
     )
     ds.to_zarr(target, mode="w", compute=True, consolidated=True)
