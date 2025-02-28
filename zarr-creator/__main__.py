@@ -5,8 +5,7 @@ import sys
 
 from loguru import logger
 
-from .read_source import read_source
-from .write_zarr import write_zarr
+from .write_zarr import create_single_levels_zarr
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
@@ -82,23 +81,36 @@ def cli(argv=None):
     if args.source not in ["dinisf"]:
         raise ValueError("Invalid data-catalog source: {}".format(args.source))
 
+    # Format analysis_time to remove colons
+    formatted_analysis_time = args.analysis_time.replace(":", "")
+
     fp_out = args.output_path.format(
         source=args.source,
-        analysis_time=args.analysis_time,
+        analysis_time=formatted_analysis_time,
         forecast_duration=args.forecast_duration,
     )
 
     logger.info("Creating zarr dataset from source: {}".format(args.source))
 
-    ds = read_source(
+    # ds = read_source(
+    #     source_name=args.source,
+    #     t_analysis=args.analysis_time,
+    #     forecast_duration=args.forecast_duration,
+    #     pds_receive_path=args.pds_receive_path,
+    # )
+
+    # write_zarr(
+    #     ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING, t_analysis=args.analysis_time
+    # )
+
+    fp_out = "single_levels.zarr"
+
+    create_single_levels_zarr(
         source_name=args.source,
-        t_analysis=args.analysis_time,
+        t_analysis=formatted_analysis_time,
         forecast_duration=args.forecast_duration,
         pds_receive_path=args.pds_receive_path,
-    )
-
-    write_zarr(
-        ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING, t_analysis=args.analysis_time
+        output_path=fp_out,
     )
 
 

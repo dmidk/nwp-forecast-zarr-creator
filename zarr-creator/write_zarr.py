@@ -8,6 +8,9 @@ from pathlib import Path
 import fsspec
 from loguru import logger
 
+from .config import DATA_COLLECTION
+from .read_source import filter_single_levels, read_source
+
 
 def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None):
     """
@@ -43,9 +46,6 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
         else:
             logger.error(f"{fp_out} already exists. Set overwrite=True to overwrite.")
 
-    # fs = fsspec.filesystem("file")
-    # mapper = fs.get_mapper(fp_out)
-
     for d in ds.dims:
         dim_len = len(ds[d])
         if d in rechunk_to and rechunk_to[d] > dim_len:
@@ -64,8 +64,6 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
     for v in ds.data_vars:
         # target_chunks[v] = {d: target_chunks[d] for d in ds[v].dims}
         target_chunks[v] = {d: rechunk_to.get(d, ds[d].size) for d in ds[v].dims}
-
-    # target_store = mapper
 
     if temp_dir is None:
         temp_dir = Path(tempfile.TemporaryDirectory().name)
@@ -86,3 +84,11 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
     logger.info("done!", flush=True)
 
     return
+
+
+def create_single_levels_zarr(
+    source_name, t_analysis, forecast_duration, pds_receive_path, output_path
+):
+    ds = read_source(source_name, t_analysis, forecast_duration, pds_receive_path)
+    ds_single_levels = filter_single_levels(ds)
+    write_zarr(ds_single_levels, output_path, DATA_COLLECTION["rechunk_to"], t_analysis)

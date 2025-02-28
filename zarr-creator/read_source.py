@@ -10,6 +10,8 @@ import xarray as xr
 from dmidc.utils import normalise_duration
 from loguru import logger
 
+from .config import DATA_COLLECTION
+
 # set the eccodes definitions path, older versions of eccodes require this
 gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
 
@@ -40,8 +42,8 @@ def read_source(
             analysis_time=t_analysis,
             data_kind="sf",
             storage_platform="pds_grib",
-            short_name="u",
-            level=10,
+            # short_name="u",
+            # level=10,
             pds_receive_path=pds_receive_path,
             level_type="heightAboveGround",
             forecast_duration=normalise_duration(forecast_duration),
@@ -51,3 +53,24 @@ def read_source(
         sys.exit(1)
 
     return ds
+
+
+def filter_single_levels(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Filter the dataset to include only the single levels variables.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The dataset to filter.
+
+    Returns
+    -------
+    xarray.Dataset
+        The filtered dataset.
+    """
+    single_levels_config = DATA_COLLECTION["parts"]["single_levels"]
+    variables = single_levels_config["heightAboveGround"]["variables"]
+    present_variables = {var: levels for var, levels in variables.items() if var in ds}
+    ds_single_levels = ds[list(present_variables.keys())]
+    return ds_single_levels
