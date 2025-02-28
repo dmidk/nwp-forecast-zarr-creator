@@ -9,7 +9,7 @@ import fsspec
 from loguru import logger
 
 
-def write_zarr(ds, fp_out, rechunk_to, overwrite=True, temp_dir=None):
+def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None):
     """
     Write a xarray dataset to a zarr store.
 
@@ -76,7 +76,12 @@ def write_zarr(ds, fp_out, rechunk_to, overwrite=True, temp_dir=None):
     ds.encoding = {}
     for var_name in ds.data_vars:
         ds[var_name].encoding = {}
-    ds.to_zarr(target_store, mode="w", compute=True, consolidated=True)
+
+    target = fsspec.get_mapper(
+        f"s3://harmonie-zarr/dini/{t_analysis}/{target_store}",
+        client_kwargs={"region_name": "eu-central-1"},
+    )
+    ds.to_zarr(target, mode="w", compute=True, consolidated=True)
 
     logger.info("done!", flush=True)
 

@@ -13,6 +13,7 @@ dependencies = [
     "ipdb>=0.13.13",
     "dask<=2024.11.2",
     "zarrdump>=0.4.2",
+    "s3fs>=2025.2.0",
 ]
 requires-python = ">=3.10"
 readme = "README.md"

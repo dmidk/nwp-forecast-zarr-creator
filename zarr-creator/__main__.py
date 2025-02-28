@@ -97,7 +97,9 @@ def cli(argv=None):
         pds_receive_path=args.pds_receive_path,
     )
 
-    write_zarr(ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING)
+    write_zarr(
+        ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING, t_analysis=args.analysis_time
+    )
 
 
 if __name__ == "__main__":
