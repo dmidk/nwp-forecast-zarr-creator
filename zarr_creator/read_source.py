@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import datetime
-import sys
 
 import dmidc.harmonie
 import dmidc.utils
@@ -36,21 +35,25 @@ def read_source(
     """
     logger.info(f"Reading source {source_name} at {t_analysis}")
 
-    if source_name == "dinisf":
-        ds = dmidc.harmonie.load(
-            suite_name="DINI",
-            analysis_time=t_analysis,
-            data_kind="sf",
-            storage_platform="pds_grib",
-            # short_name="u",
-            # level=10,
-            pds_receive_path=pds_receive_path,
-            level_type="heightAboveGround",
-            forecast_duration=normalise_duration(forecast_duration),
-        )
-    else:
-        logger.error(f"Unknown source {source_name}")
-        sys.exit(1)
+    single_level_conf = DATA_COLLECTION["parts"]["single_levels"]
+
+    datasets = []
+    for level_type, level_config in single_level_conf.items():
+        for var_name, levels in level_config["variables"].items():
+            ds = dmidc.harmonie.load(
+                suite_name="DINI",
+                analysis_time=t_analysis,
+                data_kind="sf",
+                storage_platform="pds_grib",
+                pds_receive_path=pds_receive_path,
+                short_name=var_name,
+                level_type=level_type,
+                levels=levels,
+                forecast_duration=normalise_duration(forecast_duration),
+            )
+            datasets.append(ds)
+
+    ds = xr.merge(datasets)
 
     return ds
 

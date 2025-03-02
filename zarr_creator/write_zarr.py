@@ -1,18 +1,27 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import shutil
-import tempfile
+import datetime
 import warnings
-from pathlib import Path
 
 import fsspec
+import xarray as xr
 from loguru import logger
 
 from .config import DATA_COLLECTION
 from .read_source import filter_single_levels, read_source
 
+BUCKET_NAME = "harmonie-zarr"
+BUCKET_REGION = "eu-central-1"
+OUTPUT_PREFIX_FORMAT = "dini/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
 
-def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None):
+
+def write_zarr_to_s3(
+    ds: xr.Dataset,
+    dataset_id: str,
+    rechunk_to: dict,
+    member: str,
+    t_analysis: datetime.datetime,
+):
     """
     Write a xarray dataset to a zarr store.
 
@@ -20,32 +29,18 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
     ----------
     ds : xarray.Dataset
         The dataset to write.
-    fp_out : Path
-        The path to the zarr store to create.
+    dataset_id: str
+        The dataset id, e.g. "single_levels" or "pressure_levels"
     rechunk_to : dict
         A dictionary specifying the target chunk size for each dimension.
         Only the dimensions that are present in the dataset will be used, and
         the size limited to the size of the dimension (if the chunk size
         provided is larger).
-    overwrite : bool
-        Whether to overwrite the zarr store if it already exists.
-    temp_dir : Path
-        The temporary directory to use for intermediate files. If None, a
-        temporary directory will be created.
+    member : str
+        The forecast member name, e.g. "control"
+    t_analysis : datetime.datetime
+        The analysis time of the forecast.
     """
-    fp_out = Path(fp_out)
-
-    if not fp_out.name.endswith(".zarr"):
-        raise Exception(f"fp_out must end with .zarr, got {fp_out}")
-
-    fp_out.parent.mkdir(parents=True, exist_ok=True)
-
-    if Path(fp_out).exists():
-        if overwrite:
-            shutil.rmtree(fp_out)
-        else:
-            logger.error(f"{fp_out} already exists. Set overwrite=True to overwrite.")
-
     for d in ds.dims:
         dim_len = len(ds[d])
         if d in rechunk_to and rechunk_to[d] > dim_len:
@@ -65,9 +60,6 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
         # target_chunks[v] = {d: target_chunks[d] for d in ds[v].dims}
         target_chunks[v] = {d: rechunk_to.get(d, ds[d].size) for d in ds[v].dims}
 
-    if temp_dir is None:
-        temp_dir = Path(tempfile.TemporaryDirectory().name)
-
     # reset the encoding so that the zarr dataset that is written isn't written
     # with an encoding that is reliant on the gribscan package's decoding
     # functions
@@ -75,9 +67,15 @@ def write_zarr(ds, fp_out, rechunk_to, t_analysis, overwrite=True, temp_dir=None
     for var_name in ds.data_vars:
         ds[var_name].encoding = {}
 
+    t_analysis_formatted = t_analysis.isoformat().replace(":", "").replace("+0000", "Z")
+    prefix = OUTPUT_PREFIX_FORMAT.format(
+        member=member, t_analysis_formatted=t_analysis_formatted, dataset_id=dataset_id
+    )
+    path_out = f"s3://{BUCKET_NAME}/{prefix}"
+    logger.info(f"Writing to {path_out}", flush=True)
     target = fsspec.get_mapper(
-        f"s3://harmonie-zarr/dini/{t_analysis}/{fp_out.name}",
-        client_kwargs={"region_name": "eu-central-1"},
+        path_out,
+        client_kwargs={"region_name": BUCKET_REGION},
     )
     ds.to_zarr(target, mode="w", compute=True, consolidated=True)
 
@@ -91,4 +89,6 @@ def create_single_levels_zarr(
 ):
     ds = read_source(source_name, t_analysis, forecast_duration, pds_receive_path)
     ds_single_levels = filter_single_levels(ds)
-    write_zarr(ds_single_levels, output_path, DATA_COLLECTION["rechunk_to"], t_analysis)
+    write_zarr_to_s3(
+        ds_single_levels, output_path, DATA_COLLECTION["rechunk_to"], t_analysis
+    )

@@ -1,3 +1,4 @@
 *.pyc
 *.zarr/
 mnt/
+refs/
