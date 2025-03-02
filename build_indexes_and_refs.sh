@@ -69,8 +69,8 @@ ANALYSIS_TIME_STR=$(date -d $ANALYSIS_TIME +%Y%m%d%H)
 
 # check that the 60th file exists
 for type in sf pl; do
-    if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+060${MEMBER_ID}_${type}" ]; then
-        echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+060${MEMBER_ID}_${type} does not exist"
+    if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+012${MEMBER_ID}_${type}" ]; then
+        echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+012${MEMBER_ID}_${type} does not exist"
         exit 1
     fi
 done

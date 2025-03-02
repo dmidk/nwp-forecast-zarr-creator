@@ -6,8 +6,8 @@ while true; do
     #
     # Get the current time in seconds since epoch
     now=$(date +%s)
-    # Subtract 3.0 hours (10800 seconds) to get the nearest past 3-hour interval
-    adjusted_time=$((now - 10800))
+    # Subtract 2.0 hours (7200 seconds) to get the time of the previous 3-hour interval
+    adjusted_time=$((now - 7200))
     # Calculate the nearest past 3-hour interval
     rounded_time=$((adjusted_time / 10800 * 10800))
     # Convert back to human-readable format
@@ -29,5 +29,6 @@ while true; do
     done
 
     pdm run python -m zarr_creator --t_analysis "$analysis_time"
-    sleep 3600
+    # sleep three hours
+    sleep 10800
 done
