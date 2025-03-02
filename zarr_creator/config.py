@@ -3,17 +3,12 @@
 # and a name-mapping may also be defined
 
 DATA_COLLECTION = dict(
-    description="All prognostic variables on all levels",
-    # x and y chunksize are created so that domain is split into 3x2=6 roughly
-    # equal chunks that we time chunksize of 256 gives ~100MB chunks for each
-    # level/single-level field
-    rechunk_to=dict(time=256, x=263, y=295, pressure=1, altitude=1),
     parts=dict(
-        static_fields=dict(),
         height_levels=dict(
             heightAboveGround=dict(
                 variables={
-                    v: [30, 50, 75, 100, 150, 200, 250, 300, 500]
+                    # v: [30, 50, 75, 100, 150, 200, 250, 300, 500]  # levels in DANRA
+                    v: [50, 100, 150, 250]  # only these in DINI
                     for v in "t r u v".split()
                 }
             )
@@ -37,7 +32,8 @@ DATA_COLLECTION = dict(
                         200,
                         100,
                     ]
-                    for v in "z t u v tw r ciwc cwat".split()
+                    # for v in "z t u v tw r ciwc cwat".split()  # variables in DANRA
+                    for v in "z t u v r".split()
                 }
             )
         ),
@@ -45,25 +41,25 @@ DATA_COLLECTION = dict(
             heightAboveGround=dict(
                 variables={
                     **{
-                        v: [0]
+                        v: None
                         for v in [
                             "hcc",
                             "lcc",
                             "mcc",
-                            "tcc",
-                            "icei",
-                            "lwavr",
+                            # "tcc", # not in DINI
+                            # "icei", # not in DINI
+                            # "lwavr", # not in DINI
                             "mld",
                             "pres",
-                            "prtp",
-                            "psct",
-                            "pscw",
-                            "pstb",
-                            "pstbc",
-                            "sf",
-                            "swavr",
+                            # "prtp", # not in DINI
+                            # "psct", # not in DINI
+                            # "pscw", # not in DINI
+                            # "pstb", # not in DINI
+                            # "pstbc", # not in DINI
+                            # "sf", # not in DINI
+                            # "swavr", # not in DINI
                             "vis",
-                            "xhail",
+                            # "xhail", # not in DINI
                         ]
                     },
                     **{
@@ -76,13 +72,13 @@ DATA_COLLECTION = dict(
                 level_name_mapping="{var_name}{level:d}m",
             ),
             entireAtmosphere=dict(
-                variables={v: [0] for v in "pwat cape cb ct grpl".split()},
+                # variables={v: [0] for v in "pwat cape cb ct grpl".split()},
+                variables={v: None for v in ["cape"]},  # pwat, cb, ct, grpl not in DINI
                 level_name_mapping="{var_name}_column",
             ),
             heightAboveSea=dict(
-                variables=dict(pres=[0]), level_name_mapping="{var_name}_seasurface"
+                variables=dict(pres=None), level_name_mapping="{var_name}_seasurface"
             ),
-            CONSTANTS=dict(variables=dict(lsm=[0], z=[0])),
         ),
     ),
 )

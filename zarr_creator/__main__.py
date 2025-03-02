@@ -3,9 +3,13 @@
 import argparse
 import sys
 
+import isodate
+import xarray as xr
 from loguru import logger
 
-from .write_zarr import create_single_levels_zarr
+from .config import DATA_COLLECTION
+from .read_source import read_level_type_data
+from .write_zarr import write_zarr_to_s3
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
@@ -19,43 +23,14 @@ def _setup_argparse():
     )
 
     argparser.add_argument(
-        "--analysis_time",
+        "--t_analysis",
         default=DEFAULT_ANALYSIS_TIME,
+        type=isodate.parse_datetime,
         help="Analysis time as ISO8601 string",
     )
 
     argparser.add_argument(
-        "--forecast_duration",
-        default=DEFAULT_FORECAST_DURATION,
-        help="Forecast duration as ISO8601 duration",
-    )
-
-    argparser.add_argument(
         "--verbose", action="store_true", help="Verbose output", default=False
-    )
-
-    argparser.add_argument(
-        "--source",
-        type=str,
-        help="Which data-catalog source to use",
-        default="dinisf",
-        required=False,
-    )
-
-    argparser.add_argument(
-        "--output_path",
-        type=str,
-        help="Output path for zarr dataset",
-        default="{source}_{analysis_time}_{forecast_duration}.zarr",
-        required=False,
-    )
-
-    argparser.add_argument(
-        "--pds_receive_path",
-        type=str,
-        help="Path to the PDS receive directory",
-        default="/mnt/zarr-from-dini/",
-        required=False,
     )
 
     argparser.add_argument("--log-level", default="INFO", help="The log level to use")
@@ -76,42 +51,62 @@ def cli(argv=None):
     logger.remove()
     logger.add(sys.stderr, level=args.log_level.upper())
 
-    logger.debug("Arguments: {}".format(args))
+    parts = {}
+    for part_id, part_details in DATA_COLLECTION["parts"].items():
+        ds_part = xr.Dataset()
+        for level_type, level_details in part_details.items():
+            variables = level_details["variables"]
+            ds_level_type = read_level_type_data(
+                t_analysis=args.t_analysis, level_type=level_type
+            )
+            for var_name, levels in variables.items():
+                da = ds_level_type[var_name]
+                level_name_mapping = level_details.get("level_name_mapping", None)
 
-    if args.source not in ["dinisf"]:
-        raise ValueError("Invalid data-catalog source: {}".format(args.source))
+                if levels is None:
+                    ds_part[var_name] = da
+                elif level_name_mapping is None:
+                    da = da.sel(level=levels)
+                    ds_part[var_name] = da
+                else:
+                    for level in levels:
+                        da_level = da.sel(level=level)
+                        new_name = level_name_mapping.format(
+                            level=level, var_name=var_name
+                        )
+                        ds_part[new_name] = da_level
 
-    # Format analysis_time to remove colons
-    formatted_analysis_time = args.analysis_time.replace(":", "")
+        # use "altitude" and "pressure" as dimension names instead of "level"
+        if "level" in ds_part.dims:
+            if level_type == "isobaricInhPa":
+                ds_part = ds_part.rename({"level": "pressure"})
+            elif level_type == "heightAboveGround":
+                ds_part = ds_part.rename({"level": "altitude"})
+            elif level_type == "heightAboveSea":
+                ds_part = ds_part.rename({"level": "altitude"})
+            else:
+                raise NotImplementedError(f"Level type {level_type} not implemented")
 
-    fp_out = args.output_path.format(
-        source=args.source,
-        analysis_time=formatted_analysis_time,
-        forecast_duration=args.forecast_duration,
-    )
+        # check if any of the coordinates don't have any variables, if so drop them
+        for coord in ds_part.coords:
+            if all(coord not in ds_part[v].coords for v in list(ds_part.data_vars)):
+                ds_part = ds_part.drop_vars(coord)
 
-    logger.info("Creating zarr dataset from source: {}".format(args.source))
+        parts[part_id] = ds_part
 
-    # ds = read_source(
-    #     source_name=args.source,
-    #     t_analysis=args.analysis_time,
-    #     forecast_duration=args.forecast_duration,
-    #     pds_receive_path=args.pds_receive_path,
-    # )
+    for part_id, ds_part in parts.items():
+        rechunk_to = dict(time=1, x=ds_part.x.size // 2, y=ds_part.y.size // 2)
+        # check that with the chunking provided that the arrays exactly fit into the chunks
+        for dim in rechunk_to:
+            assert ds_part[dim].size % rechunk_to[dim] == 0
 
-    # write_zarr(
-    #     ds=ds, fp_out=fp_out, rechunk_to=DEFAULT_CHUNKING, t_analysis=args.analysis_time
-    # )
-
-    fp_out = "single_levels.zarr"
-
-    create_single_levels_zarr(
-        source_name=args.source,
-        t_analysis=formatted_analysis_time,
-        forecast_duration=args.forecast_duration,
-        pds_receive_path=args.pds_receive_path,
-        output_path=fp_out,
-    )
+        write_zarr_to_s3(
+            ds=ds_part,
+            member="control",
+            dataset_id=part_id,
+            rechunk_to=rechunk_to,
+            t_analysis=args.t_analysis,
+        )
 
 
 if __name__ == "__main__":

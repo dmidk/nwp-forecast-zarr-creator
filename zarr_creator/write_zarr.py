@@ -7,9 +7,6 @@ import fsspec
 import xarray as xr
 from loguru import logger
 
-from .config import DATA_COLLECTION
-from .read_source import filter_single_levels, read_source
-
 BUCKET_NAME = "harmonie-zarr"
 BUCKET_REGION = "eu-central-1"
 OUTPUT_PREFIX_FORMAT = "dini/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
@@ -82,13 +79,3 @@ def write_zarr_to_s3(
     logger.info("done!", flush=True)
 
     return
-
-
-def create_single_levels_zarr(
-    source_name, t_analysis, forecast_duration, pds_receive_path, output_path
-):
-    ds = read_source(source_name, t_analysis, forecast_duration, pds_receive_path)
-    ds_single_levels = filter_single_levels(ds)
-    write_zarr_to_s3(
-        ds_single_levels, output_path, DATA_COLLECTION["rechunk_to"], t_analysis
-    )
