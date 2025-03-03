@@ -22,7 +22,7 @@
 #
 # With the refs written as:
 # refs/
-# └── fc2025030200_CONTROL__dmi.jsons
+# └── control/2025-03-02T0000Z.jsons
 #     ├── adiabaticCondensation.json
 #     ├── cloudTop.json
 #     ├── entireAtmosphere.json
@@ -43,7 +43,7 @@
 ANALYSIS_TIME=$1
 ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
 TEMP_ROOT="$HOME/tmp"
-REFS_ROOT_PATH="refs"
+REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
 MEMBER_ID="CONTROL__dmi"
 COPY_GRIB_BEFORE_INDEXING=1
 

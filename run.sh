@@ -28,7 +28,16 @@ while true; do
         fi
     done
 
-    pdm run python -m zarr_creator --t_analysis "$analysis_time"
+    while true; do
+        pdm run python -m zarr_creator --t_analysis "$analysis_time"
+        # check if the script was successful with the exit code
+        if [ $? -eq 0 ]; then
+            break
+        else
+            echo "Failed to build zarr, retrying in 5 minutes"
+            sleep 300
+        fi
+    done
     # sleep three hours
     sleep 10800
 done
