@@ -76,6 +76,11 @@ def cli(argv=None):
                         )
                         ds_part[new_name] = da_level
 
+                if "grid_mapping" in da.attrs:
+                    ds_part[da.attrs["grid_mapping"]] = ds_level_type[
+                        da.attrs["grid_mapping"]
+                    ]
+
         # use "altitude" and "pressure" as dimension names instead of "level"
         if "level" in ds_part.dims:
             if level_type == "isobaricInhPa":
