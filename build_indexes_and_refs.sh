@@ -67,12 +67,15 @@ fi
 # use `date` to format the analysis time to the format used in the file names
 ANALYSIS_TIME_STR=$(date -d $ANALYSIS_TIME +%Y%m%d%H)
 
-# check that the 60th file exists
+# check that the necessary GRIB files exist
+# the files don't always arrive in order, so we need to check all of them
 for type in sf pl; do
-    if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+012${MEMBER_ID}_${type}" ]; then
-        echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+012${MEMBER_ID}_${type} does not exist"
-        exit 1
-    fi
+    for i in {00..12}; do
+        if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type}" ]; then
+            echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type} does not exist"
+            exit 1
+        fi
+    done
 done
 
 mkdir -p $TEMP_ROOT
