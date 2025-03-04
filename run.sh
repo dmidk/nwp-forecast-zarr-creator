@@ -17,13 +17,15 @@ while true; do
     # format the time in iso8601 format in utc
     analysis_time=$(date -d "$rounded_time_str" -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    # check if refs have already been written for this analysis time
-    refs_path="${REFS_ROOT_PATH}/${analysis_time}"
+    # the refs path uses this analysis time in iso8601 format but without colons, without seconds and ending in .json
+    analysis_time_refs=$(date -d "$rounded_time_str" -u +"%Y-%m-%dT%H%M%SZ")
+    refs_path="${REFS_ROOT_PATH}/CONTROL__dmi/${analysis_time_refs}.jsons/"
 
     if [ -d "$refs_path" ]; then
         echo "Refs already exist for analysis time $analysis_time"
         # sleep three hours
-        sleep 10800
+        echo "Sleeping for 1 hour..."
+        sleep 3600
         continue
     fi
 
@@ -48,8 +50,7 @@ while true; do
         if [ $? -eq 0 ]; then
             break
         else
-            echo "Failed to build zarr, retrying in 5 minutes"
-            sleep 300
+            echo "Failed to build zarr, retrying..."
         fi
     done
 
@@ -59,5 +60,6 @@ while true; do
     fi
 
     # sleep three hours
+    echo "Sleeping for 3 hours..."
     sleep 10800
 done
