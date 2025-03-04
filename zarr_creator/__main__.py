@@ -64,11 +64,21 @@ def cli(argv=None):
                 level_name_mapping = level_details.get("level_name_mapping", None)
 
                 if levels is None:
-                    ds_part[var_name] = da
-                elif level_name_mapping is None:
+                    if level_name_mapping is None:
+                        new_name = var_name
+                    else:
+                        new_name = level_name_mapping.format(level=var_name)
+                    ds_part[new_name] = da
+                elif len(levels) == 1 and level_name_mapping is None:
+                    # can keep the same name
                     da = da.sel(level=levels)
                     ds_part[var_name] = da
                 else:
+                    if level_name_mapping is None:
+                        raise ValueError(
+                            "level_name_mapping must be provided if levels are specified"
+                            f"levels={levels} for var_name={var_name}"
+                        )
                     for level in levels:
                         da_level = da.sel(level=level)
                         new_name = level_name_mapping.format(
