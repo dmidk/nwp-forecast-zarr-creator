@@ -42,15 +42,21 @@
 
 ANALYSIS_TIME=$1
 ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
-TEMP_ROOT="$HOME/tmp"
 REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
 MEMBER_ID="CONTROL__dmi"
-COPY_GRIB_BEFORE_INDEXING=1
 
 if [ -z "$ANALYSIS_TIME" ]; then
-    echo "usage: $0 <analysis_time>"
+    echo "usage: $0 <analysis_time> [temp_root]"
     echo "  analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)"
     exit 1
+fi
+
+# set the temp root if it's provided
+if [ -n "$2" ]; then
+    TEMP_ROOT=$2
+    COPY_GRIB_BEFORE_INDEXING=1
+else
+    COPY_GRIB_BEFORE_INDEXING=0
 fi
 
 # check that the analysis_time ends with Z so that we're sure it's UTC
