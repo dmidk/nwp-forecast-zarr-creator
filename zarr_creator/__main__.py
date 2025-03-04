@@ -52,33 +52,31 @@ def cli(argv=None):
     logger.add(sys.stderr, level=args.log_level.upper())
 
     parts = {}
-    for part_id, part_details in DATA_COLLECTION["parts"].items():
+    for part_id, part_details in DATA_COLLECTION.items():
         ds_part = xr.Dataset()
-        for level_type, level_details in part_details.items():
+        for level_details in part_details:
+            level_type = level_details["level_type"]
             variables = level_details["variables"]
+            level_name_mapping = level_details.get("level_name_mapping", None)
+
             ds_level_type = read_level_type_data(
                 t_analysis=args.t_analysis, level_type=level_type
             )
             for var_name, levels in variables.items():
                 da = ds_level_type[var_name]
-                level_name_mapping = level_details.get("level_name_mapping", None)
 
                 if levels is None:
                     if level_name_mapping is None:
                         new_name = var_name
                     else:
-                        new_name = level_name_mapping.format(level=var_name)
+                        new_name = level_name_mapping.format(var_name=var_name)
                     ds_part[new_name] = da
-                elif len(levels) == 1 and level_name_mapping is None:
-                    # can keep the same name
+                elif level_name_mapping is None:
+                    # assuming we're just selecting levels and not changing the name
                     da = da.sel(level=levels)
                     ds_part[var_name] = da
                 else:
-                    if level_name_mapping is None:
-                        raise ValueError(
-                            "level_name_mapping must be provided if levels are specified"
-                            f"levels={levels} for var_name={var_name}"
-                        )
+                    # mapping each level to a new variable name
                     for level in levels:
                         da_level = da.sel(level=level)
                         new_name = level_name_mapping.format(
