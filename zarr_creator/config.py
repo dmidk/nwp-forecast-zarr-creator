@@ -51,7 +51,6 @@ DATA_COLLECTION = dict(
                     # "icei", # not in DINI
                     # "lwavr", # not in DINI
                     "mld",
-                    "pres",
                     # "prtp", # not in DINI
                     # "psct", # not in DINI
                     # "pscw", # not in DINI
@@ -68,6 +67,7 @@ DATA_COLLECTION = dict(
             level_type="heightAboveGround",
             variables={
                 "t": [0, 2],
+                "pres": [0],
                 "r": [2],
                 "u": [10],
                 "v": [10],
