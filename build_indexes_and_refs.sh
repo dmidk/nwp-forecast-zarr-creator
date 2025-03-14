@@ -8,7 +8,7 @@
 # Usage: ./build_indexes_and_refs.sh <analysis_time>
 #   analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS)
 #
-# NB: for now we only process the first 12 hrs
+# NB: for now we only process the firs 36 hours
 #
 # Running the script as for example:
 #   ./build_indexes_and_refs.sh 2025-03-02T00:00
@@ -76,7 +76,7 @@ ANALYSIS_TIME_STR=$(date -d $ANALYSIS_TIME +%Y%m%d%H)
 # check that the necessary GRIB files exist
 # the files don't always arrive in order, so we need to check all of them
 for type in sf pl; do
-    for i in {00..12}; do
+    for i in {00..36}; do
         if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type}" ]; then
             echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type} does not exist"
             exit 1
@@ -91,7 +91,7 @@ for type in sf pl; do
         echo "Copying from $ROOT_PATH to $TEMP_ROOT"
         # cp $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..01}${MEMBER_ID}_${type} $TEMP_ROOT
         # use rsync with --progress to show progress
-        rsync -av --progress $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..12}${MEMBER_ID}_${type} $TEMP_ROOT
+        rsync -av --progress $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} $TEMP_ROOT
         # check exist code and exit if not 0
         if [ $? -ne 0 ]; then
             echo "Failed to copy files"
@@ -103,7 +103,7 @@ for type in sf pl; do
     fi
 
     echo "Indexing $type files"
-    gribscan-index $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..12}${MEMBER_ID}_${type} -n 2
+    gribscan-index $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
 
     echo "Building refs for $type files"
     gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \

@@ -9,7 +9,7 @@ while true; do
     # Get the current time in seconds since epoch
     now=$(date +%s)
     # Subtract 2.0 hours (7200 seconds) to get the time of the previous 3-hour interval
-    adjusted_time=$((now - 3600))
+    adjusted_time=$((now - 7200))
     # Calculate the nearest past 3-hour interval
     rounded_time=$((adjusted_time / 10800 * 10800))
     # Convert back to human-readable format
@@ -22,44 +22,42 @@ while true; do
     refs_path="${REFS_ROOT_PATH}/CONTROL__dmi/${analysis_time_refs}.jsons/"
 
     if [ -d "$refs_path" ]; then
-        echo "Refs already exist for analysis time $analysis_time"
-        # sleep three hours
-        echo "Sleeping for 1 hour..."
-        sleep 3600
+        echo "Refs already exist for analysis time $analysis_time ($refs_path)"
+        echo "Sleeping for 20 min..."
+        sleep 1200
         continue
-    fi
-
-    echo "Running zarr conversion for analysis time $analysis_time"
-
-    while true; do
+    else
+        echo "Creating indexes refs for analysis time $analysis_time"
         ./build_indexes_and_refs.sh $analysis_time $TEMP_ROOT
 
         # check if the script was successful with the exit code
         if [ $? -eq 0 ]; then
-            break
+            echo "Indexes and refs built successfully for analysis time $analysis_time"
         else
-            echo "Failed to build indexes and refs, retrying in 5 minutes"
-            sleep 300
-	    continue
+            echo "Failed to build indexes and refs"
         fi
-    done
-
-    while true; do
-        pdm run python -m zarr_creator --t_analysis "$analysis_time"
-        # check if the script was successful with the exit code
-        if [ $? -eq 0 ]; then
-            break
-        else
-            echo "Failed to build zarr, retrying..."
-        fi
-    done
-
-    # delete temporary storage if it was used
-    if [ -d "$TEMP_ROOT" ]; then
-        rm -rf $TEMP_ROOT
     fi
 
-    # sleep three hours
-    echo "Sleeping for 3 hours..."
-    sleep 10800
+    if [ -d "$refs_path" ]; then
+        echo "Running zarr conversion for analysis time $analysis_time"
+
+        while true; do
+            pdm run python -m zarr_creator --t_analysis "$analysis_time"
+            # check if the script was successful with the exit code
+            if [ $? -eq 0 ]; then
+                # delete temporary storage if it was used
+                echo "Zarr conversion successful for analysis time $analysis_time"
+                if [ -d "$TEMP_ROOT" ]; then
+                    echo "Deleting temporary storage..."
+                    rm -rf $TEMP_ROOT
+                fi
+                break
+            else
+                echo "Failed to build zarr, retrying..."
+            fi
+        done
+    fi
+
+    echo "Sleeping for 5 minutes..."
+    sleep 300
 done
