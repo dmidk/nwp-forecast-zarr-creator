@@ -123,8 +123,5 @@ def cli(argv=None):
 
 
 if __name__ == "__main__":
-    import ipdb
-
-    with ipdb.launch_ipdb_on_exception():
-        with logger.catch(reraise=True):
-            cli()
+    with logger.catch(reraise=True):
+        cli()
