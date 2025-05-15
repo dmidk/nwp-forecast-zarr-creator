@@ -1,0 +1,27 @@
+#Provided by Henrik Feddersen (Danish Meteorological Institute)
+#Convective inhibition
+'J kg**-1' = {
+     discipline = 0 ;
+     parameterCategory = 7 ;
+     parameterNumber = 7 ;
+     typeOfSecondFixedSurface = 8 ;
+     typeOfFirstFixedSurface = 1 ;
+    }
+#Convective available potential energy
+'J kg**-1' = {
+     discipline = 0 ;
+     parameterCategory = 7 ;
+     parameterNumber = 6 ;
+     typeOfFirstFixedSurface = 1 ;
+     typeOfSecondFixedSurface = 8 ;
+    }
+#Land-sea mask
+'0-1' = {
+         discipline = 2 ;
+         parameterCategory = 0 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+    }

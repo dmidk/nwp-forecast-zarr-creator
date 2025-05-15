@@ -1,14 +1,24 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import datetime
+from pathlib import Path
 
 import gribscan
 import isodate
 import xarray as xr
 from loguru import logger
 
-# set the eccodes definitions path, older versions of eccodes require this
-gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
+# set the eccodes definitions path to use the definitions included with this
+# repo. We need to do this because for example for land-sea mask
+# (discipline=2,parameterCategory=0,parameterNumber=0) although this
+# set of values is the WMO GRIB2 standard this isn't set as land-sea mask in
+# all versions of eccodes. In our case we call this `lsm` as the short name.
+# XXX: eventually we should completely remove the use of short-names and instead
+# map from discipline,parameterCategory,parameterNumber to cf standard names)
+local_defns_path = Path(__file__).parent.parent / "eccodes_definitions"
+gribscan.eccodes.codes_set_definitions_path(
+    f"{local_defns_path}:/usr/share/eccodes/definitions"
+)
 
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:

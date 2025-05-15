@@ -71,6 +71,7 @@ DATA_COLLECTION = dict(
                 "r": [2],
                 "u": [10],
                 "v": [10],
+                "lsm": [0],
             },
             level_name_mapping="{var_name}{level:d}m",
         ),
