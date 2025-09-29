@@ -43,6 +43,10 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
     if level_type == "heightAboveGround":
         # u-wind @ 10m and 100m are given as their own variables... same for v-wind
         ds = _merge_special_fields(ds)
+        
+        # land-sea mask is given for each timestep even though it doesn't
+        # change, let's remove the time dimension
+        ds["lsm"] = ds.isel(time=0).ls
 
     # add cf-complicant projection information
     _add_projection_info(ds)
