@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import datetime
 from pathlib import Path
+import pkg_resources
 
 import gribscan
 import isodate
@@ -19,6 +20,12 @@ local_defns_path = Path(__file__).parent.parent / "eccodes_definitions"
 gribscan.eccodes.codes_set_definitions_path(
     f"{local_defns_path}:/usr/share/eccodes/definitions"
 )
+
+# pkg_resources.path requires that we provide the path to a file, so we give a
+# temporary filename (pkg_resources.path() will create and immediately delete
+# the file, because the python object representing the path is immediately
+# deleted when calling .parent)
+local_defns_path = pkg_resources.path("zarr_creator.eccodes_definitions", "__tmp__").parent
 
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:
