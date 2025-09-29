@@ -2,3 +2,4 @@
 *.zarr/
 mnt/
 refs/
+uv.lock
