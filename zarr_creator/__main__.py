@@ -7,10 +7,10 @@ import isodate
 import xarray as xr
 from loguru import logger
 
+from . import __version__
 from .config import DATA_COLLECTION
 from .read_source import read_level_type_data
 from .write_zarr import write_zarr_to_s3
-from . import __version__
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
@@ -113,7 +113,7 @@ def cli(argv=None):
         # check that with the chunking provided that the arrays exactly fit into the chunks
         for dim in rechunk_to:
             assert ds_part[dim].size % rechunk_to[dim] == 0
-            
+
         # set zarr-creator version
         ds_part.attrs["zarr_creator_version"] = __version__
 

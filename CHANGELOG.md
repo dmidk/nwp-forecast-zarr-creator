@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - First working prototype (#6, `3e71183`):
   - Reads DINI GRIB files (`sf` and `pl`)
   - Creates `height_levels.zarr`, `pressure_levels.zarr`, `single_levels.zarr`
-  - Writes outputs to an S3 bucket  
+  - Writes outputs to an S3 bucket
 
 ---
 

@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 import datetime
 from pathlib import Path
-import pkg_resources
 
 import gribscan
 import isodate
+import pkg_resources
 import xarray as xr
 from loguru import logger
 
@@ -25,7 +25,9 @@ gribscan.eccodes.codes_set_definitions_path(
 # temporary filename (pkg_resources.path() will create and immediately delete
 # the file, because the python object representing the path is immediately
 # deleted when calling .parent)
-local_defns_path = pkg_resources.path("zarr_creator.eccodes_definitions", "__tmp__").parent
+local_defns_path = pkg_resources.path(
+    "zarr_creator.eccodes_definitions", "__tmp__"
+).parent
 
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:
@@ -43,7 +45,7 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
     if level_type == "heightAboveGround":
         # u-wind @ 10m and 100m are given as their own variables... same for v-wind
         ds = _merge_special_fields(ds)
-        
+
         # land-sea mask is given for each timestep even though it doesn't
         # change, let's remove the time dimension
         ds["lsm"] = ds.isel(time=0).ls
