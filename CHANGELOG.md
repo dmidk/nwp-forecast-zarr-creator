@@ -7,8 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 ### Added
-- Land–sea mask extraction (`0cdf848`)
+- Land–sea mask extraction (`0cdf848`) and
+  [\#9](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/9), @leifdenby
 - Add changelog file and use dynamic versioning
+  [\#9](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/9), @leifdenby
+- Add wrapper for `gribscan-index` CLI to set local eccodes definitions path so
+  that `gribscan` can pick up the WMO standard GRIB2 definitions that DMI uses.
+  Also bundles these local definitions with the package.
+  [\#9](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/9), @leifdenby
 
 ---
 
