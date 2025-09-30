@@ -109,7 +109,13 @@ for type in sf pl; do
     fi
 
     echo "Indexing $type files"
-    gribscan-index $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
+    # we can't just call the `gribscan-index` command line tool here because we
+    # need to set the local GRIB2 defininitions path and that is only possible
+    # with the eccodes python packge with the call
+    # `eccodes.codes_set_definitions_path(...)`. Unfortunately using the
+    # `ECCODES_DEFINITION_PATH` doesn't work with the python package, and so we
+    # must wrap the `gribscan-index` call.`
+    uv run python -m zarr_creator.build_indexes $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
 
     echo "Building refs for $type files"
     gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
