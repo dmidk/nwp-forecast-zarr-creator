@@ -5,7 +5,7 @@ TEMP_ROOT="$HOME/tmp"
 # make sure eccodes definitions env variable is set so that we can use the DMI
 # definitions (those that overwrite ECMWF definitions with WMO standard GRIB2
 # definitions) when using the gribscan CLI
-LOCAL_ECCODES_DEFINITIONS_PATH=$(pdm run python -m zarr_creator.local_grib_definitions_path)
+LOCAL_ECCODES_DEFINITIONS_PATH=$(uv run python -m zarr_creator.local_grib_definitions_path)
 export ECCODES_DEFINITIONS_PATH=${LOCAL_ECCODES_DEFINITIONS_PATH}:"/usr/share/eccodes/definitions/"
 
 while true; do
@@ -48,7 +48,7 @@ while true; do
         echo "Running zarr conversion for analysis time $analysis_time"
 
         while true; do
-            pdm run python -m zarr_creator --t_analysis "$analysis_time"
+            uv run python -m zarr_creator --t_analysis "$analysis_time"
             # check if the script was successful with the exit code
             if [ $? -eq 0 ]; then
                 # delete temporary storage if it was used
