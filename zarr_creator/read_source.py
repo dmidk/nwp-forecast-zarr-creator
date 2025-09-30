@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import datetime
-from pathlib import Path
 
 import gribscan
 import isodate
-import pkg_resources
 import xarray as xr
 from loguru import logger
+
+from .local_grib_definitions_path import LOCAL_GRIB_DEFNS_PATH
 
 # set the eccodes definitions path to use the definitions included with this
 # repo. We need to do this because for example for land-sea mask
@@ -16,18 +16,9 @@ from loguru import logger
 # all versions of eccodes. In our case we call this `lsm` as the short name.
 # XXX: eventually we should completely remove the use of short-names and instead
 # map from discipline,parameterCategory,parameterNumber to cf standard names)
-local_defns_path = Path(__file__).parent.parent / "eccodes_definitions"
 gribscan.eccodes.codes_set_definitions_path(
-    f"{local_defns_path}:/usr/share/eccodes/definitions"
+    f"{LOCAL_GRIB_DEFNS_PATH}:/usr/share/eccodes/definitions"
 )
-
-# pkg_resources.path requires that we provide the path to a file, so we give a
-# temporary filename (pkg_resources.path() will create and immediately delete
-# the file, because the python object representing the path is immediately
-# deleted when calling .parent)
-local_defns_path = pkg_resources.path(
-    "zarr_creator.eccodes_definitions", "__tmp__"
-).parent
 
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:
