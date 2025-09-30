@@ -25,7 +25,7 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
 
         # land-sea mask is given for each timestep even though it doesn't
         # change, let's remove the time dimension
-        ds["lsm"] = ds.isel(time=0).ls
+        ds["lsm"] = ds.isel(time=0).lsm
 
     # add cf-complicant projection information
     _add_projection_info(ds)
@@ -201,3 +201,7 @@ def main():
     ds = read_level_type_data(t_analysis=args.analysis_time, level_type=args.level_type)
 
     print(ds)
+
+
+if __name__ == "__main__":
+    main()
