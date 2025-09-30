@@ -197,3 +197,21 @@ def merge_level_specific_params(ds, true_param, level, short_name):
 
     da = xr.concat([da_subset, da_special], dim="level")
     return da
+
+
+def main():
+    import argparse
+
+    argparser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    argparser.add_argument(
+        "--analysis_time", type=isodate.parse_datetime, required=True
+    )
+    argparser.add_argument("--level_type", default="heightAboveGround")
+
+    args = argparser.parse_args()
+
+    ds = read_level_type_data(t_analysis=args.analysis_time, level_type=args.level_type)
+
+    print(ds)
