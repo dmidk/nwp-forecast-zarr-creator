@@ -6,10 +6,6 @@ import isodate
 import xarray as xr
 from loguru import logger
 
-from .grib_definitions import set_local_eccodes_definitions_path
-
-set_local_eccodes_definitions_path()
-
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:
     t_str = isodate.datetime_isoformat(t_analysis).replace(":", "")
