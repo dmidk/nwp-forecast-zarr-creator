@@ -60,6 +60,7 @@ DATA_COLLECTION = dict(
                     # "swavr", # not in DINI
                     "vis",
                     # "xhail", # not in DINI
+                    "lsm",
                 ]
             },
         ),
@@ -71,7 +72,6 @@ DATA_COLLECTION = dict(
                 "r": [2],
                 "u": [10],
                 "v": [10],
-                "lsm": [0],
             },
             level_name_mapping="{var_name}{level:d}m",
         ),
