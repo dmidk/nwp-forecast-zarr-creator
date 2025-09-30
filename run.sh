@@ -2,12 +2,6 @@
 REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
 TEMP_ROOT="$HOME/tmp"
 
-# make sure eccodes definitions env variable is set so that we can use the DMI
-# definitions (those that overwrite ECMWF definitions with WMO standard GRIB2
-# definitions) when using the gribscan CLI
-LOCAL_ECCODES_DEFINITIONS_PATH=$(uv run python -m zarr_creator.local_grib_definitions_path)
-export ECCODES_DEFINITIONS_PATH=${LOCAL_ECCODES_DEFINITIONS_PATH}:"/usr/share/eccodes/definitions/"
-
 while true; do
     # find the nearest three hour interval to the current time, e.g. 00:00,
     # 03:00, 06:00, etc. get the current time in utc

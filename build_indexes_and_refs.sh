@@ -45,6 +45,12 @@ ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
 REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
 MEMBER_ID="CONTROL__dmi"
 
+# make sure eccodes definitions env variable is set so that we can use the DMI
+# definitions (those that overwrite ECMWF definitions with WMO standard GRIB2
+# definitions) when using the gribscan CLI
+LOCAL_ECCODES_DEFINITIONS_PATH=$(uv run python -m zarr_creator.local_grib_definitions_path)
+export ECCODES_DEFINITIONS_PATH=${LOCAL_ECCODES_DEFINITIONS_PATH}:"/usr/share/eccodes/definitions/"
+
 if [ -z "$ANALYSIS_TIME" ]; then
     echo "usage: $0 <analysis_time> [temp_root]"
     echo "  analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)"
