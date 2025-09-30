@@ -39,6 +39,9 @@
 #
 # i.e. the "sf" and "pl" files are indexed and ref'ed into a single output directory
 
+# fail if any variables used are not defined, this ensures we don't try copying
+# to TEMP_ROOT if it's not set
+set -u
 
 ANALYSIS_TIME=$1
 ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
@@ -84,7 +87,13 @@ for type in sf pl; do
     done
 done
 
-mkdir -p $TEMP_ROOT
+if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
+    echo "Temporary root provided, will copy GRIB files to $TEMP_ROOT before indexing"
+    mkdir -p $TEMP_ROOT
+else
+    echo "No temporary root provided, will index GRIB files directly from $ROOT_PATH"
+fi
+
 for type in sf pl; do
     SRC_PATH=""
     if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
