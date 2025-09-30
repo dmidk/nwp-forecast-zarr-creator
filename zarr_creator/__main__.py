@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+import datetime
 import sys
 
 import isodate
 import xarray as xr
 from loguru import logger
 
+from . import __version__
 from .config import DATA_COLLECTION
 from .read_source import read_level_type_data
 from .write_zarr import write_zarr_to_s3
@@ -113,6 +115,17 @@ def cli(argv=None):
         for dim in rechunk_to:
             assert ds_part[dim].size % rechunk_to[dim] == 0
 
+        # set zarr-creator version
+        ds_part.attrs["zarr_creator_version"] = __version__
+        # set creation timestamp
+        ds_part.attrs["zarr_creation_time"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat()
+        # add link to repo
+        ds_part.attrs["zarr_creator_repo"] = (
+            "https://github.com/dmidk/nwp-forecast-zarr-creator"
+        )
+
         write_zarr_to_s3(
             ds=ds_part,
             member="control",
@@ -123,8 +136,5 @@ def cli(argv=None):
 
 
 if __name__ == "__main__":
-    import ipdb
-
-    with ipdb.launch_ipdb_on_exception():
-        with logger.catch(reraise=True):
-            cli()
+    with logger.catch(reraise=True):
+        cli()

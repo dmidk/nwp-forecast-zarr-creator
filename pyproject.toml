@@ -1,6 +1,6 @@
 [project]
 name = "zarr_creator"
-version = "0.1.0"
+dynamic = ["version"]
 description = "zarr creation from harmonie dini forecasts"
 authors = [
     {name = "Kasper Stener Hintz", email = "kah@dmi.dk"},
@@ -10,12 +10,15 @@ dependencies = [
     "loguru>=0.7.3",
     "rechunker>=0.5.2",
     "fsspec>=2024.12.0",
-    "dmidc[harmonie-grib] @ file:///home/ec2-user/data-catalog",
     "ipdb>=0.13.13",
     "dask<=2024.11.2",
     "zarrdump>=0.4.2",
     "s3fs>=2025.2.0",
     "cf-xarray>=0.10.0",
+    "scipy==1.15.3",
+    "eccodes==2.37.0",
+    "isodate>=0.7.2",
+    "gribscan",
 ]
 requires-python = ">=3.10"
 readme = "README.md"
@@ -38,3 +41,16 @@ dev = [
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+[tool.pdm.version]
+source = "scm"
+fallback_version = "0.0.0"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+zarr_creator = ["eccodes_defitions/**/*",]
+
+[tool.uv.sources]
+gribscan = { git = "https://github.com/simonkamuk/gribscan", rev = "524f829405c576f2266276dc0a2ca669fcad8926" }

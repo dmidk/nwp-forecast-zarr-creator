@@ -8,7 +8,7 @@
 # Usage: ./build_indexes_and_refs.sh <analysis_time>
 #   analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS)
 #
-# NB: for now we only process the first 12 hrs
+# NB: for now we only process the first 36 hours
 #
 # Running the script as for example:
 #   ./build_indexes_and_refs.sh 2025-03-02T00:00
@@ -39,6 +39,9 @@
 #
 # i.e. the "sf" and "pl" files are indexed and ref'ed into a single output directory
 
+# fail if any variables used are not defined, this ensures we don't try copying
+# to TEMP_ROOT if it's not set
+set -u
 
 ANALYSIS_TIME=$1
 ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
@@ -76,7 +79,7 @@ ANALYSIS_TIME_STR=$(date -d $ANALYSIS_TIME +%Y%m%d%H)
 # check that the necessary GRIB files exist
 # the files don't always arrive in order, so we need to check all of them
 for type in sf pl; do
-    for i in {00..12}; do
+    for i in {00..36}; do
         if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type}" ]; then
             echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type} does not exist"
             exit 1
@@ -84,14 +87,20 @@ for type in sf pl; do
     done
 done
 
-mkdir -p $TEMP_ROOT
+if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
+    echo "Temporary root provided, will copy GRIB files to $TEMP_ROOT before indexing"
+    mkdir -p $TEMP_ROOT
+else
+    echo "No temporary root provided, will index GRIB files directly from $ROOT_PATH"
+fi
+
 for type in sf pl; do
     SRC_PATH=""
     if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
         echo "Copying from $ROOT_PATH to $TEMP_ROOT"
         # cp $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..01}${MEMBER_ID}_${type} $TEMP_ROOT
         # use rsync with --progress to show progress
-        rsync -av --progress $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..12}${MEMBER_ID}_${type} $TEMP_ROOT
+        rsync -av --progress $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} $TEMP_ROOT
         # check exist code and exit if not 0
         if [ $? -ne 0 ]; then
             echo "Failed to copy files"
@@ -103,7 +112,13 @@ for type in sf pl; do
     fi
 
     echo "Indexing $type files"
-    gribscan-index $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..12}${MEMBER_ID}_${type} -n 2
+    # we can't just call the `gribscan-index` command line tool here because we
+    # need to set the local GRIB2 defininitions path and that is only possible
+    # with the eccodes python packge with the call
+    # `eccodes.codes_set_definitions_path(...)`. Unfortunately using the
+    # `ECCODES_DEFINITION_PATH` doesn't work with the python package, and so we
+    # must wrap the `gribscan-index` call.`
+    uv run python -m zarr_creator.build_indexes $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
 
     echo "Building refs for $type files"
     gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \

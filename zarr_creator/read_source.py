@@ -2,13 +2,9 @@
 # -*- coding: utf-8 -*-
 import datetime
 
-import gribscan
 import isodate
 import xarray as xr
 from loguru import logger
-
-# set the eccodes definitions path, older versions of eccodes require this
-gribscan.eccodes.codes_set_definitions_path("/usr/share/eccodes/definitions")
 
 
 def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.Dataset:
@@ -26,6 +22,10 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
     if level_type == "heightAboveGround":
         # u-wind @ 10m and 100m are given as their own variables... same for v-wind
         ds = _merge_special_fields(ds)
+
+        # land-sea mask is given for each timestep even though it doesn't
+        # change, let's remove the time dimension
+        ds["lsm"] = ds.isel(time=0).lsm
 
     # add cf-complicant projection information
     _add_projection_info(ds)
@@ -183,3 +183,25 @@ def merge_level_specific_params(ds, true_param, level, short_name):
 
     da = xr.concat([da_subset, da_special], dim="level")
     return da
+
+
+def main():
+    import argparse
+
+    argparser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    argparser.add_argument(
+        "--analysis_time", type=isodate.parse_datetime, required=True
+    )
+    argparser.add_argument("--level_type", default="heightAboveGround")
+
+    args = argparser.parse_args()
+
+    ds = read_level_type_data(t_analysis=args.analysis_time, level_type=args.level_type)
+
+    print(ds)
+
+
+if __name__ == "__main__":
+    main()
