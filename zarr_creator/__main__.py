@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import argparse
+import datetime
 import sys
 
 import isodate
@@ -116,6 +117,14 @@ def cli(argv=None):
 
         # set zarr-creator version
         ds_part.attrs["zarr_creator_version"] = __version__
+        # set creation timestamp
+        ds_part.attrs["zarr_creation_time"] = datetime.datetime.now(
+            datetime.timezone.utc
+        ).isoformat()
+        # add link to repo
+        ds_part.attrs["zarr_creator_repo"] = (
+            "https://github.com/dmidk/nwp-forecast-zarr-creator"
+        )
 
         write_zarr_to_s3(
             ds=ds_part,
