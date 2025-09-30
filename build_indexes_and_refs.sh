@@ -8,7 +8,7 @@
 # Usage: ./build_indexes_and_refs.sh <analysis_time>
 #   analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SS)
 #
-# NB: for now we only process the firs 36 hours
+# NB: for now we only process the first 36 hours
 #
 # Running the script as for example:
 #   ./build_indexes_and_refs.sh 2025-03-02T00:00
