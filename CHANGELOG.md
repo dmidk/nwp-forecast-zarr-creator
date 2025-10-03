@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that `gribscan` can pick up the WMO standard GRIB2 definitions that DMI uses.
   Also bundles these local definitions with the package.
   [\#9](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/9), @leifdenby
+- Keep local copy of most recent forecast in `/tmp/dini-recent`
+  [\#12](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/12),
+  @leifdenby
+
+### Added
+- Containerise setup so we can use `eccodes==2.42.0` with `eccodeslib` for C
+  library rather than rely on system `eccodes` C lib
+  [\#11](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/11), @leifdenby
 
 ---
 

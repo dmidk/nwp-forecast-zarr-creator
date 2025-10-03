@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import datetime
+import shutil
 import warnings
+from pathlib import Path
 
 import fsspec
 import xarray as xr
@@ -18,6 +20,7 @@ def write_zarr_to_s3(
     rechunk_to: dict,
     member: str,
     t_analysis: datetime.datetime,
+    local_copy_path: str = None,
 ):
     """
     Write a xarray dataset to a zarr store.
@@ -37,6 +40,9 @@ def write_zarr_to_s3(
         The forecast member name, e.g. "control"
     t_analysis : datetime.datetime
         The analysis time of the forecast.
+    local_copy_path : str, optional
+        If provided, a local copy of the zarr dataset will also be saved to
+        this path, but without the timestamp with the filename `{part_id}.zarr`.
     """
     for d in ds.dims:
         dim_len = len(ds[d])
@@ -68,6 +74,18 @@ def write_zarr_to_s3(
     prefix = OUTPUT_PREFIX_FORMAT.format(
         member=member, t_analysis_formatted=t_analysis_formatted, dataset_id=dataset_id
     )
+
+    fn_local = f"{dataset_id}.zarr"
+    if local_copy_path is not None:
+        Path(local_copy_path).mkdir(parents=True, exist_ok=True)
+        fp_local = Path(local_copy_path) / fn_local
+        if fp_local.exists():
+            logger.warning(f"Local copy path {fp_local} already exists, overwriting")
+            shutil.rmtree(fp_local)
+
+        logger.info(f"Writing local copy to {fp_local}")
+        ds.to_zarr(fp_local, mode="w")
+
     path_out = f"s3://{BUCKET_NAME}/{prefix}"
     logger.info(f"Writing to {path_out}", flush=True)
     target = fsspec.get_mapper(
