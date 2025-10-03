@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import sys
+from pathlib import Path
 
 import isodate
 import xarray as xr
@@ -17,6 +18,8 @@ from .write_zarr import write_zarr_to_s3
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
+LOCAL_COPY_STORAGE_PATH = Path("/tmp/dini-recent")
+
 
 set_local_eccodes_definitions_path()
 
@@ -135,6 +138,7 @@ def cli(argv=None):
             dataset_id=part_id,
             rechunk_to=rechunk_to,
             t_analysis=args.t_analysis,
+            local_copy_path=LOCAL_COPY_STORAGE_PATH,
         )
 
 
