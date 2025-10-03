@@ -7,6 +7,7 @@ with eccodes.
 import importlib.resources as pkg_resources
 
 import eccodes
+from loguru import logger
 
 # pkg_resources.path requires that we provide the path to a file, so we give a
 # temporary filename (pkg_resources.path() will create and immediately delete
@@ -38,11 +39,17 @@ def set_local_eccodes_definitions_path():
     #    definitions in memory (so this works even though the `/MEMFS/` path
     #    doesn't actually exist). So we need to add that prefix to our path.
 
+    p_default = "/MEMFS/definitions"
+
     # doesn't work, see above
     # eccodes.codes_set_definitions_path(LOCAL_GRIB_DEFNS_PATH)
+    # p = str(LOCAL_GRIB_DEFNS_PATH)
 
     # works, lol
-    eccodes.codes_set_definitions_path(f"{LOCAL_GRIB_DEFNS_PATH}:/MEMFS/definitions")
+    p = f"{LOCAL_GRIB_DEFNS_PATH}:{p_default}"
+
+    logger.info(f"Setting eccodes definitions path to: {p}")
+    eccodes.codes_set_definitions_path(p)
 
 
 if __name__ == "__main__":

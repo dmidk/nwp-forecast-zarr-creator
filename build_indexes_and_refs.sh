@@ -42,6 +42,8 @@
 # fail if any variables used are not defined, this ensures we don't try copying
 # to TEMP_ROOT if it's not set
 set -u
+# fail if any command has non-zero exit code
+set -e
 
 ANALYSIS_TIME=$1
 ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
@@ -121,7 +123,7 @@ for type in sf pl; do
     uv run python -m zarr_creator.build_indexes $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
 
     echo "Building refs for $type files"
-    gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
+    uv run gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
         -o ${REFS_ROOT_PATH}/${MEMBER_ID}/${ANALYSIS_TIME//:/}.jsons\
         --prefix $SRC_PATH/ \
         -m harmonie

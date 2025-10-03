@@ -10,12 +10,15 @@ from loguru import logger
 
 from . import __version__
 from .config import DATA_COLLECTION
+from .grib_definitions import set_local_eccodes_definitions_path
 from .read_source import read_level_type_data
 from .write_zarr import write_zarr_to_s3
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
+
+set_local_eccodes_definitions_path()
 
 
 def _setup_argparse():
