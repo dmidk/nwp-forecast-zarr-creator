@@ -30,6 +30,11 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
     # add cf-complicant projection information
     _add_projection_info(ds)
 
+    # set cf-compliant standard_name for axes time, x and y
+    ds.time.attrs["standard_name"] = "time"
+    ds.x.attrs["standard_name"] = "projection_x_coordinate"
+    ds.y.attrs["standard_name"] = "projection_y_coordinate"
+
     return ds
 
 
