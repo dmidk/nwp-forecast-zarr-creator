@@ -1,26 +1,28 @@
-FROM ubuntu:24.04
-
-# set working directory
-WORKDIR /app
-
-COPY pyproject.toml .
-COPY README.md .
+# --- builder ---
+FROM python:3.12-slim AS builder
+WORKDIR /src
+# Install Git to ensure versioning works
+RUN apt-get update && apt-get install -y git
+COPY pyproject.toml README.md ./
 COPY zarr_creator ./zarr_creator
-COPY build_indexes_and_refs.sh .
-COPY run.sh .
+# copy over git metadata so that pdm-scm can detect version
+COPY .git ./.git
+RUN pip install pdm-backend build
+RUN python -m build --wheel
 
-RUN apt-get update
-RUN apt-get install -y curl git rsync
-RUN apt-get install -y libaec0 libaec-dev
-
+# --- runtime ---
+FROM ubuntu:24.04
+WORKDIR /app
+RUN apt-get update && apt-get install -y curl libaec0 libaec-dev
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Setup up PATH for uv
 ENV PATH="/root/.local/bin:$PATH"
-
-# Create venv with python3.12 (3.13 didn't work with some deps)
 RUN uv venv -p 3.12
-RUN uv sync
 
-ENTRYPOINT ["./run.sh"]
+# Copy wheel only (no .git)
+COPY --from=builder /src/dist/*.whl /app/dist/
+# Install the wheel and deps
+RUN uv pip install /app/dist/*.whl
+
+# Check that version is set correctly from git (i.e. not the default "0.0.0")
+RUN uv run python -c "import zarr_creator; assert zarr_creator.__version__ != '0.0.0'"
