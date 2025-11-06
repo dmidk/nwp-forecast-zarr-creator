@@ -2,7 +2,7 @@
 FROM ubuntu:24.04
 WORKDIR /app
 # Install Git to ensure versioning works
-RUN apt-get update && apt-get install -y git curl libaec0 libaec-dev
+RUN apt-get update && apt-get install -y git curl libaec0 libaec-dev rsync
 COPY pyproject.toml README.md ./
 COPY zarr_creator ./zarr_creator
 # copy over git metadata so that pdm-scm can detect version
