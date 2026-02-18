@@ -1,0 +1,26 @@
+{
+  "name": "nwp-forecast-zarr-creator",
+  "dockerComposeFile": [
+    "../docker-compose.dev.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/app",
+  "overrideCommand": true,
+  "shutdownAction": "stopCompose",
+  "containerEnv": {
+    "ROOT_PATH": "/mnt/harmonie-data-from-pds/ml",
+    "REFS_ROOT_PATH": "/app/refs",
+    "TEMP_ROOT": "/tmp/nwp-forecast-zarr-creator"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker",
+        "charliermarsh.ruff"
+      ]
+    }
+  },
+  "postCreateCommand": "uv sync"
+}

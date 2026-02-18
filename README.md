@@ -2,6 +2,8 @@
 
 This repository contains the code to process DINI GRIB files into zarr format.
 
+For local VS Code + Docker development, see [DEVELOPING.md](DEVELOPING.md).
+
 Currently, this writes all pressure-level fields to `pressure_levels.zarr`,
 height-level fields to `height_levels.zarr` and everything else to
 `single_levels.zarr`. We do not currently transfer and convert model-level

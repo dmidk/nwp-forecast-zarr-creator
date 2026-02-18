@@ -1,7 +1,7 @@
 #!/bin/bash
 # every hour run the script
-REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
-TEMP_ROOT="/tmp/nwp-forecast-zarr-creator"
+REFS_ROOT_PATH="${REFS_ROOT_PATH:-/home/ec2-user/nwp-forecast-zarr-creator/refs}"
+TEMP_ROOT="${TEMP_ROOT:-/tmp/nwp-forecast-zarr-creator}"
 
 while true; do
     # find the nearest three hour interval to the current time, e.g. 00:00,
@@ -30,7 +30,7 @@ while true; do
     else
         echo "Creating indexes refs for analysis time $analysis_time"
         echo "(calling ./build_indexes_and_refs.sh $analysis_time $TEMP_ROOT)"
-        ./build_indexes_and_refs.sh $analysis_time $TEMP_ROOT
+        ./build_indexes_and_refs.sh "$analysis_time" "$TEMP_ROOT"
 
         # check if the script was successful with the exit code
         if [ $? -eq 0 ]; then
@@ -51,7 +51,7 @@ while true; do
                 echo "Zarr conversion successful for analysis time $analysis_time"
                 if [ -d "$TEMP_ROOT" ]; then
                     echo "Deleting temporary storage..."
-                    rm -rf $TEMP_ROOT
+                    rm -rf "$TEMP_ROOT"
                 fi
                 break
             else

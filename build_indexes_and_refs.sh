@@ -45,10 +45,10 @@ set -u
 # fail if any command has non-zero exit code
 set -e
 
-ANALYSIS_TIME=$1
-ROOT_PATH="/mnt/harmonie-data-from-pds/ml"
-REFS_ROOT_PATH="/home/ec2-user/nwp-forecast-zarr-creator/refs"
-MEMBER_ID="CONTROL__dmi"
+ANALYSIS_TIME="${1:-}"
+ROOT_PATH="${ROOT_PATH:-/mnt/harmonie-data-from-pds/ml}"
+REFS_ROOT_PATH="${REFS_ROOT_PATH:-/home/ec2-user/nwp-forecast-zarr-creator/refs}"
+MEMBER_ID="${MEMBER_ID:-CONTROL__dmi}"
 
 if [ -z "$ANALYSIS_TIME" ]; then
     echo "usage: $0 <analysis_time> [temp_root]"
@@ -57,7 +57,7 @@ if [ -z "$ANALYSIS_TIME" ]; then
 fi
 
 # set the temp root if it's provided
-if [ -n "$2" ]; then
+if [ $# -ge 2 ] && [ -n "$2" ]; then
     TEMP_ROOT=$2
     COPY_GRIB_BEFORE_INDEXING=1
 else
@@ -76,7 +76,7 @@ fi
 # fc<analysis_time>+<forecast_hour><member_id>_<type>
 
 # use `date` to format the analysis time to the format used in the file names
-ANALYSIS_TIME_STR=$(date -d $ANALYSIS_TIME +%Y%m%d%H)
+ANALYSIS_TIME_STR=$(date -d "$ANALYSIS_TIME" +%Y%m%d%H)
 
 # check that the necessary GRIB files exist
 # the files don't always arrive in order, so we need to check all of them
@@ -91,7 +91,7 @@ done
 
 if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
     echo "Temporary root provided, will copy GRIB files to $TEMP_ROOT before indexing"
-    mkdir -p $TEMP_ROOT
+    mkdir -p "$TEMP_ROOT"
 else
     echo "No temporary root provided, will index GRIB files directly from $ROOT_PATH"
 fi
@@ -102,7 +102,7 @@ for type in sf pl; do
         echo "Copying from $ROOT_PATH to $TEMP_ROOT"
         # cp $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..01}${MEMBER_ID}_${type} $TEMP_ROOT
         # use rsync with --progress to show progress
-        rsync -av --progress $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} $TEMP_ROOT
+        rsync -av --progress "$ROOT_PATH"/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} "$TEMP_ROOT"
         # check exist code and exit if not 0
         if [ $? -ne 0 ]; then
             echo "Failed to copy files"
@@ -120,11 +120,11 @@ for type in sf pl; do
     # `eccodes.codes_set_definitions_path(...)`. Unfortunately using the
     # `ECCODES_DEFINITION_PATH` doesn't work with the python package, and so we
     # must wrap the `gribscan-index` call.`
-    uv run python -m zarr_creator.build_indexes $SRC_PATH/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
+    uv run python -m zarr_creator.build_indexes "$SRC_PATH"/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
 
     echo "Building refs for $type files"
-    uv run gribscan-build $SRC_PATH/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
+    uv run gribscan-build "$SRC_PATH"/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
         -o ${REFS_ROOT_PATH}/${MEMBER_ID}/${ANALYSIS_TIME//:/}.jsons\
-        --prefix $SRC_PATH/ \
+        --prefix "$SRC_PATH"/ \
         -m harmonie
 done
