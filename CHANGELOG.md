@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+### Changed
+
+- Added a full dev-container workflow (compose/devcontainer/docs), local GRIB download tooling, and local-development zarr options to make day-to-day development reproducible and faster.
+- Standardized runtime path configuration and refs handling by introducing shared script defaults, renaming GRIB source/temp env vars, removing hardcoded refs paths, and enforcing a single refs timestamp directory format (`YYYY-MM-DDTHHMMZ`).
+
 ## [v0.5.4]
 ### Fixed
 
