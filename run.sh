@@ -19,8 +19,8 @@ while true; do
     # format the time in iso8601 format in utc
     analysis_time=$(date -d "$rounded_time_str" -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    # the refs path uses this analysis time in iso8601 format but without colons, without seconds and ending in .json
-    analysis_time_refs=$(date -d "$rounded_time_str" -u +"%Y-%m-%dT%H%M%SZ")
+    # refs directory format is normalized to minute precision: YYYY-MM-DDTHHMMZ
+    analysis_time_refs=$(date -d "$rounded_time_str" -u +"%Y-%m-%dT%H%MZ")
     refs_path="${REFS_ROOT_PATH}/CONTROL__dmi/${analysis_time_refs}.jsons/"
 
     if [ -d "$refs_path" ]; then

@@ -36,6 +36,13 @@ available. If needed, you can override this before reopening the container:
 export DEV_CONTAINER_PLATFORM=linux/amd64
 ```
 
+To open a shell inside the already-running dev container from your host
+terminal:
+
+```bash
+docker compose -f docker-compose.dev.yml exec app bash
+```
+
 The development container:
 
 - mounts this repo to `/app`

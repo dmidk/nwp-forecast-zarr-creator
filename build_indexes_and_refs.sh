@@ -82,6 +82,8 @@ fi
 
 # use `date` to format the analysis time to the format used in the file names
 ANALYSIS_TIME_STR=$(date -d "$ANALYSIS_TIME" +%Y%m%d%H)
+# use a normalized minute-resolution refs directory name everywhere
+ANALYSIS_REFS_DIR=$(date -d "$ANALYSIS_TIME" -u +"%Y-%m-%dT%H%MZ")
 
 # check that the necessary GRIB files exist
 # the files don't always arrive in order, so we need to check all of them
@@ -145,7 +147,7 @@ for type in sf pl; do
         index_files+=("$SRC_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type}.index")
     done
     uv run gribscan-build "${index_files[@]}" \
-        -o ${REFS_ROOT_PATH}/${MEMBER_ID}/${ANALYSIS_TIME//:/}.jsons\
+        -o ${REFS_ROOT_PATH}/${MEMBER_ID}/${ANALYSIS_REFS_DIR}.jsons\
         --prefix "$SRC_PATH"/ \
         -m harmonie
 done

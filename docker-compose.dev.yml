@@ -15,3 +15,4 @@ services:
     environment:
       SRC_GRIB_ROOT_PATH: /mnt/harmonie-data-from-pds/ml
       REFS_ROOT_PATH: /app/refs
+      SRC_GRIB_TEMP_PATH: ""
