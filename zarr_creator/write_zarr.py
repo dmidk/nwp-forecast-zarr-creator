@@ -14,16 +14,18 @@ BUCKET_REGION = "eu-central-1"
 OUTPUT_PREFIX_FORMAT = "dini/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
 
 
-def write_zarr_to_s3(
+def write_output_zarrs(
     ds: xr.Dataset,
     dataset_id: str,
     rechunk_to: dict,
     member: str,
     t_analysis: datetime.datetime,
+    skip_s3_bucket_upload: bool = False,
     local_copy_path: str = None,
 ):
     """
-    Write a xarray dataset to a zarr store.
+    Write a xarray dataset to zarr, always creating a local copy and optionally
+    uploading to S3.
 
     Parameters
     ----------
@@ -40,6 +42,8 @@ def write_zarr_to_s3(
         The forecast member name, e.g. "control"
     t_analysis : datetime.datetime
         The analysis time of the forecast.
+    skip_s3_bucket_upload : bool, optional
+        If True, skip uploading the output zarr dataset to S3.
     local_copy_path : str, optional
         If provided, a local copy of the zarr dataset will also be saved to
         this path, but without the timestamp with the filename `{part_id}.zarr`.
@@ -86,13 +90,16 @@ def write_zarr_to_s3(
         logger.info(f"Writing local copy to {fp_local}")
         ds.to_zarr(fp_local, mode="w")
 
-    path_out = f"s3://{BUCKET_NAME}/{prefix}"
-    logger.info(f"Writing to {path_out}", flush=True)
-    target = fsspec.get_mapper(
-        path_out,
-        client_kwargs={"region_name": BUCKET_REGION},
-    )
-    ds.to_zarr(target, mode="w", compute=True, consolidated=True)
+    if skip_s3_bucket_upload:
+        logger.info("Skipping S3 upload (--skip-s3-bucket-upload enabled)")
+    else:
+        path_out = f"s3://{BUCKET_NAME}/{prefix}"
+        logger.info(f"Writing to {path_out}", flush=True)
+        target = fsspec.get_mapper(
+            path_out,
+            client_kwargs={"region_name": BUCKET_REGION},
+        )
+        ds.to_zarr(target, mode="w", compute=True, consolidated=True)
 
     logger.info("done!", flush=True)
 

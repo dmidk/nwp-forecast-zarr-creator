@@ -2,7 +2,7 @@
 FROM ubuntu:24.04
 WORKDIR /app
 # Install Git to ensure versioning works
-RUN apt-get update && apt-get install -y git curl libaec0 libaec-dev rsync
+RUN apt-get update && apt-get install -y git curl libaec0 libaec-dev rsync tree
 COPY pyproject.toml README.md ./
 COPY zarr_creator ./zarr_creator
 # copy over git metadata so that pdm-scm can detect version
@@ -13,6 +13,8 @@ COPY build_indexes_and_refs.sh .
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:$PATH"
+ENV REFS_ROOT_PATH="/app/refs"
+ENV SRC_GRIB_TEMP_PATH="/tmp/nwp-forecast-zarr-creator"
 RUN uv venv -p 3.12
 RUN uv sync
 

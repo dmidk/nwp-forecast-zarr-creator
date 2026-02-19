@@ -40,25 +40,30 @@
 # i.e. the "sf" and "pl" files are indexed and ref'ed into a single output directory
 
 # fail if any variables used are not defined, this ensures we don't try copying
-# to TEMP_ROOT if it's not set
+# to SRC_GRIB_TEMP_PATH if it's not set
 set -u
 # fail if any command has non-zero exit code
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/script_defaults.sh"
+
 ANALYSIS_TIME="${1:-}"
-ROOT_PATH="${ROOT_PATH:-/mnt/harmonie-data-from-pds/ml}"
-REFS_ROOT_PATH="${REFS_ROOT_PATH:-/home/ec2-user/nwp-forecast-zarr-creator/refs}"
-MEMBER_ID="${MEMBER_ID:-CONTROL__dmi}"
 
 if [ -z "$ANALYSIS_TIME" ]; then
     echo "usage: $0 <analysis_time> [temp_root]"
     echo "  analysis_time: analysis time in ISO 8601 format (YYYY-MM-DDTHH:MM:SSZ)"
+    echo "  MAX_HOUR env var controls max forecast hour (default: ${MAX_HOUR})"
+    echo "  temp_root or SRC_GRIB_TEMP_PATH env var enables copy-before-indexing"
     exit 1
 fi
 
-# set the temp root if it's provided
+# set the temp root if it's provided as second arg
 if [ $# -ge 2 ] && [ -n "$2" ]; then
-    TEMP_ROOT=$2
+    SRC_GRIB_TEMP_PATH="$2"
+fi
+
+if [ -n "${SRC_GRIB_TEMP_PATH:-}" ]; then
     COPY_GRIB_BEFORE_INDEXING=1
 else
     COPY_GRIB_BEFORE_INDEXING=0
@@ -80,37 +85,45 @@ ANALYSIS_TIME_STR=$(date -d "$ANALYSIS_TIME" +%Y%m%d%H)
 
 # check that the necessary GRIB files exist
 # the files don't always arrive in order, so we need to check all of them
+forecast_hours=()
+for hour in $(seq 0 "$MAX_HOUR"); do
+    forecast_hours+=("$(printf "%03d" "$hour")")
+done
+
 for type in sf pl; do
-    for i in {00..36}; do
-        if [ ! -f "$ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type}" ]; then
-            echo "File $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0${i}${MEMBER_ID}_${type} does not exist"
+    for hour in "${forecast_hours[@]}"; do
+        if [ ! -f "$SRC_GRIB_ROOT_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type}" ]; then
+            echo "File $SRC_GRIB_ROOT_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type} does not exist"
             exit 1
         fi
     done
 done
 
-if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
-    echo "Temporary root provided, will copy GRIB files to $TEMP_ROOT before indexing"
-    mkdir -p "$TEMP_ROOT"
+if [ "$COPY_GRIB_BEFORE_INDEXING" -eq 1 ]; then
+    echo "Using temporary root $SRC_GRIB_TEMP_PATH and copying GRIB files before indexing"
+    mkdir -p "$SRC_GRIB_TEMP_PATH"
 else
-    echo "No temporary root provided, will index GRIB files directly from $ROOT_PATH"
+    echo "No temporary root provided, will index GRIB files directly from $SRC_GRIB_ROOT_PATH"
 fi
 
 for type in sf pl; do
     SRC_PATH=""
-    if [ $COPY_GRIB_BEFORE_INDEXING -eq 1 ]; then
-        echo "Copying from $ROOT_PATH to $TEMP_ROOT"
-        # cp $ROOT_PATH/fc${ANALYSIS_TIME_STR}+0{00..01}${MEMBER_ID}_${type} $TEMP_ROOT
-        # use rsync with --progress to show progress
-        rsync -av --progress "$ROOT_PATH"/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} "$TEMP_ROOT"
+    source_files=()
+    for hour in "${forecast_hours[@]}"; do
+        source_files+=("$SRC_GRIB_ROOT_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type}")
+    done
+
+    if [ "$COPY_GRIB_BEFORE_INDEXING" -eq 1 ]; then
+        echo "Copying from $SRC_GRIB_ROOT_PATH to $SRC_GRIB_TEMP_PATH"
+        rsync -av --progress "${source_files[@]}" "$SRC_GRIB_TEMP_PATH"
         # check exist code and exit if not 0
         if [ $? -ne 0 ]; then
             echo "Failed to copy files"
             exit 1
         fi
-        SRC_PATH=$TEMP_ROOT
+        SRC_PATH=$SRC_GRIB_TEMP_PATH
     else
-        SRC_PATH=$ROOT_PATH
+        SRC_PATH=$SRC_GRIB_ROOT_PATH
     fi
 
     echo "Indexing $type files"
@@ -120,10 +133,18 @@ for type in sf pl; do
     # `eccodes.codes_set_definitions_path(...)`. Unfortunately using the
     # `ECCODES_DEFINITION_PATH` doesn't work with the python package, and so we
     # must wrap the `gribscan-index` call.`
-    uv run python -m zarr_creator.build_indexes "$SRC_PATH"/fc${ANALYSIS_TIME_STR}+0{00..36}${MEMBER_ID}_${type} -n 2
+    index_inputs=()
+    for hour in "${forecast_hours[@]}"; do
+        index_inputs+=("$SRC_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type}")
+    done
+    uv run python -m zarr_creator.build_indexes "${index_inputs[@]}" -n 2
 
     echo "Building refs for $type files"
-    uv run gribscan-build "$SRC_PATH"/fc${ANALYSIS_TIME_STR}+???${MEMBER_ID}_${type}.index \
+    index_files=()
+    for hour in "${forecast_hours[@]}"; do
+        index_files+=("$SRC_PATH/fc${ANALYSIS_TIME_STR}+${hour}${MEMBER_ID}_${type}.index")
+    done
+    uv run gribscan-build "${index_files[@]}" \
         -o ${REFS_ROOT_PATH}/${MEMBER_ID}/${ANALYSIS_TIME//:/}.jsons\
         --prefix "$SRC_PATH"/ \
         -m harmonie

@@ -3,6 +3,16 @@
 This repository includes a VS Code Dev Container setup so development runs in
 the same Docker environment as the application.
 
+## How code edits are used
+
+When the Dev Container is running, `docker-compose.dev.yml` bind-mounts this
+repository into the container at `/app` (`.:/app`). That means edits you make
+in VS Code on your machine are immediately visible inside the container.
+
+Although the `Dockerfile` also uses `COPY` to place application files in the
+image at build time, the bind mount overrides those copied files at runtime for
+development.
+
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine + Compose)
@@ -32,9 +42,12 @@ The development container:
 - maps local input data to `/mnt/harmonie-data-from-pds/ml`
 - maps local `./tmp` to `/tmp`
 - sets:
-  - `ROOT_PATH=/mnt/harmonie-data-from-pds/ml`
+  - `SRC_GRIB_ROOT_PATH=/mnt/harmonie-data-from-pds/ml`
   - `REFS_ROOT_PATH=/app/refs`
-  - `TEMP_ROOT=/tmp/nwp-forecast-zarr-creator`
+
+`SRC_GRIB_TEMP_PATH` is not set by default in the dev container, so
+`build_indexes_and_refs.sh` indexes directly from `SRC_GRIB_ROOT_PATH` unless
+you set `SRC_GRIB_TEMP_PATH` explicitly.
 
 ## 2. Prepare input data locally
 
@@ -84,11 +97,12 @@ MAX_HOUR=12 ./scripts/download_harmonie_data.sh 2025-03-02T00:00:00Z
 Inside the Dev Container terminal:
 
 ```bash
-./build_indexes_and_refs.sh 2025-03-02T00:00:00Z /tmp/nwp-forecast-zarr-creator
-uv run python -m zarr_creator --t_analysis 2025-03-02T00:00:00Z
+SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator ./build_indexes_and_refs.sh 2025-03-02T00:00:00Z
+uv run python -m zarr_creator --t_analysis 2025-03-02T00:00:00Z --skip-s3-bucket-upload
 ```
 
 Generated refs are written to `./refs` in your repo.
+Generated zarr outputs in this mode are written locally under `/tmp/dini-recent`.
 
 ## 4. Run tests
 
@@ -103,9 +117,9 @@ uv run pytest
 `run.sh` and `build_indexes_and_refs.sh` now support environment-variable
 overrides while preserving existing server defaults:
 
-- `ROOT_PATH`
+- `SRC_GRIB_ROOT_PATH`
 - `REFS_ROOT_PATH`
-- `TEMP_ROOT`
+- `SRC_GRIB_TEMP_PATH`
 - `MEMBER_ID`
 
 This allows the same scripts to run in both production and local dev.

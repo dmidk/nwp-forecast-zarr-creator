@@ -33,15 +33,102 @@ Running the conversion manually requires two steps:
 1. Build GRIB indexes and and refs by calling GRIB scan directly:
 
 ```bash
-./build_indexes_and_refs.sh 2025-02-27T15:00Z [tempdir]
+./build_indexes_and_refs.sh 2025-02-27T15:00Z
 ```
 
-This will write to `refs/` and optionally copy the source GRIB files to `tempdir` if provided
+This writes refs to `refs/`. If you want to copy source GRIB files to a
+temporary location before indexing, set `SRC_GRIB_TEMP_PATH` as an environment
+variable.
 
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the target s3 bucket:
 
 ```bash
-pdm run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z
+```
+
+## Runtime Defaults
+
+Shared runtime defaults are defined in `script_defaults.sh`.
+Both `run.sh` and `build_indexes_and_refs.sh` source this file.
+
+You can override any default by exporting the corresponding environment variable
+before running either script.
+
+| Variable | Script default | Default in container | Meaning |
+|---|---|---|---|
+| `SRC_GRIB_ROOT_PATH` | `/mnt/harmonie-data-from-pds/ml` | *as script default* | Path where source GRIB forecast files are read from. |
+| `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written. |
+| `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
+| `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
+| `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
+
+For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
+unset.
+
+Example overrides:
+
+```bash
+export MAX_HOUR=12
+export SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator
+./build_indexes_and_refs.sh 2025-02-27T15:00:00Z
+```
+
+Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (default script behavior):
+
+```mermaid
+flowchart TB
+  subgraph H["Host OS"]
+    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
+    H2["/tmp (optional bind mount target)"]
+  end
+
+  subgraph C["Container"]
+    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
+    C2["build_indexes_and_refs.sh"]
+    C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
+    C4["zarr_creator"]
+    C5["S3 bucket<br/>(final zarr output)"]
+    C6["/tmp/dini-recent<br/>(local zarr copy)"]
+  end
+
+  H1 -->|mounted as| C1
+  C1 -->|read by| C2
+  C2 -->|writes to| C3
+  C3 -->|read by| C4
+  C4 -->|writes to| C5
+  C4 -->|writes to| C6
+  C6 -->|can be persisted via /tmp mount| H2
+```
+
+Data flow when `SRC_GRIB_TEMP_PATH` is **set** (copy-before-indexing):
+
+```mermaid
+flowchart TB
+  subgraph H["Host OS"]
+    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
+    H2["/tmp<br/>(bind mount target)"]
+  end
+
+  subgraph C["Container"]
+    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
+    C2["${SRC_GRIB_TEMP_PATH}<br/>default=unset (prod Docker default=/tmp/nwp-forecast-zarr-creator)"]
+    C3["build_indexes_and_refs.sh"]
+    C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
+    C5["zarr_creator"]
+    C6["S3 bucket<br/>(final zarr output)"]
+    C7["/tmp/dini-recent<br/>(local zarr copy)"]
+  end
+
+  H1 -->|mounted as| C1
+  H2 -->|mounted as /tmp| C2
+  C1 -->|read by| C3
+  C3 -->|copied to| C2
+  C2 -->|read by for index build| C3
+  C3 -->|writes to| C4
+  C4 -->|read by| C5
+  C5 -->|writes to| C6
+  C5 -->|writes to| C7
+  C7 -->|persisted via /tmp mount| H2
 ```
 
 
@@ -82,6 +169,10 @@ Run container:
 ```bash
 docker run --rm -it -v /mnt/:/mnt/ -v /tmp/:/tmp/ nwp-forecast-zarr-creator:latest
 ```
+
+In the production Docker image, `SRC_GRIB_TEMP_PATH` is set by default to
+`/tmp/nwp-forecast-zarr-creator`, so GRIB files are copied before indexing
+unless you override `SRC_GRIB_TEMP_PATH`.
 
 Regarding the volume mounts:
 - The S3-buckets used for reading data are expected to be mounted in `/mnt/`

@@ -13,6 +13,5 @@ services:
       - ${HARMONIE_DATA_DIR:-./data/harmonie/ml}:/mnt/harmonie-data-from-pds/ml
       - ${TMP_DIR:-./tmp}:/tmp
     environment:
-      ROOT_PATH: /mnt/harmonie-data-from-pds/ml
+      SRC_GRIB_ROOT_PATH: /mnt/harmonie-data-from-pds/ml
       REFS_ROOT_PATH: /app/refs
-      TEMP_ROOT: /tmp/nwp-forecast-zarr-creator

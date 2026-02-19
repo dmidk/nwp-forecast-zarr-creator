@@ -13,7 +13,7 @@ from . import __version__
 from .config import DATA_COLLECTION
 from .grib_definitions import set_local_eccodes_definitions_path
 from .read_source import read_level_type_data
-from .write_zarr import write_zarr_to_s3
+from .write_zarr import write_output_zarrs
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
@@ -44,6 +44,14 @@ def _setup_argparse():
     argparser.add_argument("--log-level", default="INFO", help="The log level to use")
 
     argparser.add_argument("--log-file", default=None, help="The file to log to")
+    argparser.add_argument(
+        "--skip-s3-bucket-upload",
+        action="store_true",
+        help=(
+            "If provided, skip uploading zarr outputs to the S3 bucket. "
+            "A local copy is still written to /tmp/dini-recent."
+        ),
+    )
 
     return argparser
 
@@ -132,12 +140,13 @@ def cli(argv=None):
             "https://github.com/dmidk/nwp-forecast-zarr-creator"
         )
 
-        write_zarr_to_s3(
+        write_output_zarrs(
             ds=ds_part,
             member="control",
             dataset_id=part_id,
             rechunk_to=rechunk_to,
             t_analysis=args.t_analysis,
+            skip_s3_bucket_upload=args.skip_s3_bucket_upload,
             local_copy_path=LOCAL_COPY_STORAGE_PATH,
         )
 
