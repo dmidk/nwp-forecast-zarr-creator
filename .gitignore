@@ -5,3 +5,4 @@ refs/
 uv.lock
 data/
 tmp/
+lib/
