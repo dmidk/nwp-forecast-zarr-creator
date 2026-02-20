@@ -30,16 +30,22 @@ DATA_COLLECTION = OrderedDict(
         dict(
             level_type="heightAboveGround",
             variables={
+                "swavr": None,
+                "swavr_accum": None,
+                "lwavr": None,
+                "lwavr_accum": None,
+                "vis": None,
+            },
+            level_name_mapping="{var_name}0m",
+        ),
+        dict(
+            level_type="heightAboveGround",
+            variables={
                 "t": [0, 2],
                 "pres": [0],
                 "r": [2],
                 "u": [10],
                 "v": [10],
-                "vis": [0],
-                "svawr": [0],
-                "swavr_accum": [0],
-                "lwavr": [0],
-                "lwavr_accum": [0],
             },
             level_name_mapping="{var_name}{level:d}m",
         ),
