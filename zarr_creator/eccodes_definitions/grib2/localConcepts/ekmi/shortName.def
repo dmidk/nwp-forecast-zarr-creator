@@ -1,20 +1,285 @@
-#Provided by Henrik Feddersen (Danish Meteorological Institute)
-#Convective inhibition
-'cin' = {
-     discipline = 0 ;
-     parameterCategory = 7 ;
-     parameterNumber = 7 ;
-     typeOfSecondFixedSurface = 8 ;
-     typeOfFirstFixedSurface = 1 ;
-    }
-#Convective available potential energy
+#High cloud cover
+'hcc' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 5 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Low cloud cover
+'lcc' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Medium cloud cover
+'mcc' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 4 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Total cloud cover
+'tcc' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 32 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Temperature
+'t' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Dew point temperature
+'td' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 6 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#U component of wind
+'u' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#V component of wind
+'v' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#W component of wind
+'w' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 9 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Total precipitation
+'tp' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 52 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         typeOfFirstFixedSurface = 1 ;
+         tablesVersion = 30 ;
+        }
+#Total solid precipitation
+'tpsolid' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 128 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         typeOfFirstFixedSurface = 1 ;
+         tablesVersion = 30 ;
+        }
+#Specific humidity
+'q' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pressure reduced to mean sea level
+'msl' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pressure
+'pres' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Geopotential
+'z' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 4 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Geometrical height
+'h' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 6 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Maximum temperature
+'tmax' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 0 ;
+         typeOfStatisticalProcessing = 2 ;
+         typeOfFirstFixedSurface = 103 ;
+         scaleFactorOfFirstFixedSurface = 0 ;
+         scaledValueOfFirstFixedSurface = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Minimum temperature
+'tmin' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 0 ;
+         typeOfStatisticalProcessing = 3 ;
+         typeOfFirstFixedSurface = 103 ;
+         scaleFactorOfFirstFixedSurface = 0 ;
+         scaledValueOfFirstFixedSurface = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Visibility
+'vis' = {
+         discipline = 0 ;
+         parameterCategory = 19 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Snow depth water equivalent
+'sdwe' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 60 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Total column integral water vapour
+'wvint' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 64 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Vertical integral of cloud ice
+'ciwc_vint' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 70 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Mixed layer depth
+'mld' = {
+         discipline = 0 ;
+         parameterCategory = 19 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Convective Available Potential Energy
 'cape' = {
-     discipline = 0 ;
-     parameterCategory = 7 ;
-     parameterNumber = 6 ;
-     typeOfFirstFixedSurface = 1 ;
-     typeOfSecondFixedSurface = 8 ;
-    }
+         discipline = 0 ;
+         parameterCategory = 7 ;
+         parameterNumber = 6 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         tablesVersion = 30 ;
+        }
 #Land-sea mask
 'lsm' = {
          discipline = 2 ;
@@ -24,4 +289,605 @@
          editionNumber = 2 ;
          interpretationOfNumberOfPoints = 0 ;
          subCentre = 255 ;
-    }
+         tablesVersion = 30 ;
+        }
+#Net longwave radiation flux (surface)
+'nlwrs' = {
+         discipline = 0 ;
+         parameterCategory = 5 ;
+         parameterNumber = 5 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfStatisticalProcessing = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Net longwave radiation flux(atmosph.top)
+'nlwrt' = {
+         discipline = 0 ;
+         parameterCategory = 5 ;
+         parameterNumber = 5 ;
+         typeOfFirstFixedSurface = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         typeOfStatisticalProcessing = 1 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Convective inhibition
+'cin' = {
+         discipline = 0 ;
+         parameterCategory = 7 ;
+         parameterNumber = 7 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         tablesVersion = 30 ;
+        }
+#Gust, u-component
+'ugst' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 23 ;
+         typeOfStatisticalProcessing = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Net shortwave radiation flux (surface)
+'nswrs' = {
+         discipline = 0 ;
+         parameterCategory = 4 ;
+         parameterNumber = 9 ;
+         typeOfStatisticalProcessing = 1 ;
+         typeOfFirstFixedSurface = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Gust, v-component
+'vgst' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 24 ;
+         typeOfStatisticalProcessing = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Gust wind speed
+'fg' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 22 ;
+         typeOfStatisticalProcessing = 2 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Net shortwave radiation flux(atmosph.top)
+'nswrt' = {
+         discipline = 0 ;
+         parameterCategory = 4 ;
+         parameterNumber = 9 ;
+         typeOfStatisticalProcessing = 1 ;
+         typeOfFirstFixedSurface = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Lifting condensation level
+'lcl' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 6 ;
+         typeOfFirstFixedSurface = 5 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Level of free convection
+'lfc' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 6 ;
+         typeOfFirstFixedSurface = 14 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Level of neutral buoyancy
+'lnb' = {
+         discipline = 0 ;
+         parameterCategory = 3 ;
+         parameterNumber = 6 ;
+         typeOfFirstFixedSurface = 16 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Cloud base
+'cb' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 11 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Cloud top
+'ct' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 12 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Wind direction
+'wdir' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Wind speed
+'ws' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Latent heat flux
+'lhf' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 10 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Latent heat flux through evaporation
+'lhe' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 30 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Latent Heat Sublimation
+'lhsub' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 31 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Relative humidity
+'r' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pseudo satellite image: cloud top temperature (infrared)
+'psct' = {
+         discipline = 3 ;
+         parameterCategory = 2 ;
+         parameterNumber = 1 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfFirstFixedSurface = 3 ;
+         tablesVersion = 30 ;
+        }
+#Direct normal exposure
+'dne' = {
+         discipline = 3 ;
+         parameterCategory = 6 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         typeOfStatisticalProcessing = 1 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Shortwave radiation flux
+'swavr' = {
+         discipline = 0 ;
+         parameterCategory = 4 ;
+         parameterNumber = 7 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Cloud ice water content
+'ciwc' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+        }
+#Helicopter Triggered ligthning Index
+'hti' = {
+         discipline = 0 ;
+         parameterCategory = 17 ;
+         parameterNumber = 193 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+         localTablesVersion = 1;
+        }
+#Precipitation Type
+'prtp' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 192 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+         localTablesVersion = 1;
+        }
+#Vertical integral of cloud liquid water
+'cwat_vint' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 69 ;
+         level = 0 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Graupel precipitation rate
+'grpl' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 75 ;
+         level = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Global radiation flux
+'grad' = {
+         discipline = 0 ;
+         parameterCategory = 4 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         typeOfStatisticalProcessing = 1 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Total snowfall rate water equivalent
+'snow' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 53 ;
+         level = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#Rain
+'rain' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 65 ;
+         level = 0 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#Momentum flux, u-component
+'uflx' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 17 ;
+         typeOfFirstFixedSurface = 103 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#Momentum flux, v-component
+'vflx' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 18 ;
+         typeOfFirstFixedSurface = 103 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#Sensible heat flux
+'shf' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 11 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#Longwave radiation flux
+'lwavr' = {
+         discipline = 0 ;
+         parameterCategory = 5 ;
+         parameterNumber = 4 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Mask of significant cloud amount
+'msca' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 197 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Icing index version 2
+'icei2' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 194 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#AROME hail diagnostic
+'xhail' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 203 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Vertical integral of graupel
+'grpl_vint' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 74 ;
+         level = 0 ;
+         typeOfFirstFixedSurface = 1 ;
+         typeOfSecondFixedSurface = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Specific cloud liquid water content
+'cwat_cond' = {
+         discipline = 0 ;
+         parameterCategory = 1 ;
+         parameterNumber = 83 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pseudo satellite image: water vapour Tb
+'pstb' = {
+         discipline = 3 ;
+         parameterCategory = 1 ;
+         parameterNumber = 198 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pseudo satellite image: water vapour Tb + correction for clouds
+'pstbc' = {
+         discipline = 3 ;
+         parameterCategory = 1 ;
+         parameterNumber = 199 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pseudo satellite image: cloud water reflectivity (visible)
+'pscw' = {
+         discipline = 3 ;
+         parameterCategory = 1 ;
+         parameterNumber = 200 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Lightning
+'lgt' = {
+         discipline = 0 ;
+         parameterCategory = 17 ;
+         parameterNumber = 192 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pressure vertical velocity
+'omega' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 8 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Geometrical vertical velocity
+'w' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 9 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Turbulent Kinetic Energy
+'tke' = {
+         discipline = 0 ;
+         parameterCategory = 19 ;
+         parameterNumber = 11 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Potential vorticity
+'pv' = {
+         discipline = 0 ;
+         parameterCategory = 2 ;
+         parameterNumber = 14 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Pseudo-adiabatic potential temperature
+'papt' = {
+         discipline = 0 ;
+         parameterCategory = 0 ;
+         parameterNumber = 3 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+        }
+#Transmittance
+'transmit' = {
+         discipline = 0 ;
+         parameterCategory = 6 ;
+         parameterNumber = 199 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         tablesVersion = 30 ;
+         localTablesVersion = 1;
+        }
+#SW net clear sky rad
+'cssw' = {
+         discipline = 0;
+         parameterCategory = 4 ;
+         parameterNumber = 11 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }
+#LW net clear sky rad
+'cslw' = {
+         discipline = 0 ;
+         parameterCategory = 5 ;
+         parameterNumber = 6 ;
+         centre = 94 ;
+         editionNumber = 2 ;
+         interpretationOfNumberOfPoints = 0 ;
+         subCentre = 255 ;
+         typeOfStatisticalProcessing = 1 ;
+         tablesVersion = 30 ;
+        }

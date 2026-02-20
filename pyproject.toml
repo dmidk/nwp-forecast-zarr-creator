@@ -56,10 +56,5 @@ include-package-data = true
 [tool.setuptools.package-data]
 zarr_creator = ["eccodes_defitions/**/*",]
 
-[tool.uv.workspace]
-members = [
-    "lib/gribscan",
-]
-
 [tool.uv.sources]
-gribscan = { workspace = true }
+gribscan = { git = "https://github.com/leifdenby/gribscan", rev = "feat/cf-cell-methods" }

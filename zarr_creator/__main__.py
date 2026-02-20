@@ -75,9 +75,12 @@ def cli(argv=None):
             variables = level_details["variables"]
             level_name_mapping = level_details.get("level_name_mapping", None)
 
-            ds_level_type = read_level_type_data(
-                t_analysis=args.t_analysis, level_type=level_type
-            )
+            import ipdb
+
+            with ipdb.launch_ipdb_on_exception():
+                ds_level_type = read_level_type_data(
+                    t_analysis=args.t_analysis, level_type=level_type
+                )
             for var_name, levels in variables.items():
                 da = ds_level_type[var_name]
 

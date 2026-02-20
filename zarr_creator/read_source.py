@@ -30,9 +30,23 @@ def read_level_type_data(t_analysis: datetime.datetime, level_type: str) -> xr.D
         if "cfName" in ds[var_name].attrs:
             ds[var_name].attrs["standard_name"] = ds[var_name].attrs["cfName"]
 
+        # https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-2-0-4.shtml
+        if var_name.startswith("swavr"):
+            ds[var_name].attrs["standard_name"] = "surface_downwelling_shortwave_flux"
+            ds[var_name].attrs["long_name"] = "Surface downwelling shortwave flux"
+        # https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-2-0-5.shtml
+        elif var_name.startswith("lwavr"):
+            # the parameterCategory is 5 (radiation) and the parameterNumber is
+            # 4 ("Upward Longwave Radiation Flux"), but looking at the data
+            # (near-zero where there is cloud, negative otherwise)
+            # it seems to be net downward longwave flux, not upward flux as the
+            # parameter name suggests.
+            ds[var_name].attrs["standard_name"] = "surface_net_downward_longwave_flux"
+            ds[var_name].attrs["long_name"] = "Surface downwelling longwave flux"
+
     if level_type == "heightAboveGround":
         # u-wind @ 10m and 100m are given as their own variables... same for v-wind
-        ds = _merge_special_fields(ds)
+        # ds = _merge_special_fields(ds)
 
         # land-sea mask is given for each timestep even though it doesn't
         # change, let's remove the time dimension

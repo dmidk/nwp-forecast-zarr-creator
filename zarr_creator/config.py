@@ -15,7 +15,6 @@ DATA_COLLECTION = OrderedDict(
                     "mcc",
                     # "tcc", # not in DINI
                     # "icei", # not in DINI
-                    # "lwavr", # not in DINI
                     "mld",
                     # "prtp", # not in DINI
                     # "psct", # not in DINI
@@ -23,8 +22,6 @@ DATA_COLLECTION = OrderedDict(
                     # "pstb", # not in DINI
                     # "pstbc", # not in DINI
                     # "sf", # not in DINI
-                    # "swavr", # not in DINI
-                    "vis",
                     # "xhail", # not in DINI
                     "lsm",
                 ]
@@ -38,6 +35,11 @@ DATA_COLLECTION = OrderedDict(
                 "r": [2],
                 "u": [10],
                 "v": [10],
+                "vis": [0],
+                "svawr": [0],
+                "swavr_accum": [0],
+                "lwavr": [0],
+                "lwavr_accum": [0],
             },
             level_name_mapping="{var_name}{level:d}m",
         ),
