@@ -28,19 +28,17 @@ From the repository root in VS Code:
 2. VS Code builds from `Dockerfile` and starts `docker-compose.dev.yml`
 3. `uv sync` runs automatically after container creation
 
-On Apple Silicon Macs, the dev compose config defaults to
-`DEV_CONTAINER_PLATFORM=linux/amd64` so dependency wheels for `eccodeslib` are
-available. If needed, you can override this before reopening the container:
-
-```bash
-export DEV_CONTAINER_PLATFORM=linux/amd64
-```
-
 The development container:
 
 - mounts this repo (i.e. `./app`) to `/app`
 - maps local input data (`./data/harmonie/ml`) to `/mnt/harmonie-data-from-pds/ml`
 - maps local `./tmp` to `/tmp`
+
+We default to building the container for `linux/amd64` platform to ensure compatibility with the `eccodeslib` dependency which does not have pre-built wheels for Apple Silicon (arm64). This allows Apple Silicon users to develop without needing to build `eccodeslib` from source. If you want to build the container for your native platform instead, you can set `DEV_CONTAINER_PLATFORM` to your desired platform before reopening the container, e.g.:
+
+```bash
+export DEV_CONTAINER_PLATFORM=linux/x86_64
+```
 
 **note**: `SRC_GRIB_TEMP_PATH` is not set by default in the dev container, so
 `build_indexes_and_refs.sh` indexes directly from `SRC_GRIB_ROOT_PATH` rather
