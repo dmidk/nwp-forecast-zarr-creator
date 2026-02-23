@@ -9,9 +9,14 @@
 #   "cartopy",
 # ]
 # ///
-"""Create a sample plot from the height-level zarr dataset.
+"""
+Create a sample plot from the zarr datasets produced by `nwp-forecast-zarr-creator`.
 
-This is a CLI version of `notebooks/Untitled.ipynb`.
+The purpose of this script is to easy to visually assess whether the dataset
+was created correctly, by plotting a variable from the dataset on a map both
+from the lat/lon coordinates in the dataset, and with the dataset's native
+projection as defined by the grid mapping variable and its associated WKT
+string.
 """
 
 import argparse
