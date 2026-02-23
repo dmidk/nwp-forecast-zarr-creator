@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Added a full dev-container workflow (compose/devcontainer/docs), local GRIB download tooling, and local-development zarr options to make day-to-day development reproducible and faster.
+  [\#18](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/18),
+  @leifdenby
 - Standardized runtime path configuration and refs handling by introducing shared script defaults, renaming GRIB source/temp env vars, removing hardcoded refs paths, and enforcing a single refs timestamp directory format (`YYYY-MM-DDTHHMMZ`).
+  [\#18](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/18),
+  @leifdenby
 
 ## [v0.5.4]
 ### Fixed

@@ -4,6 +4,11 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/script_defaults.sh"
 
+# print env vars for debugging
+echo "SRC_GRIB_ROOT_PATH: ${SRC_GRIB_ROOT_PATH}"
+echo "REFS_ROOT_PATH: ${REFS_ROOT_PATH}"
+echo "SRC_GRIB_TEMP_PATH: ${SRC_GRIB_TEMP_PATH:-not set}"
+
 while true; do
     # find the nearest three hour interval to the current time, e.g. 00:00,
     # 03:00, 06:00, etc. get the current time in utc

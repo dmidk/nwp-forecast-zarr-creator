@@ -7,11 +7,6 @@
   "workspaceFolder": "/app",
   "overrideCommand": true,
   "shutdownAction": "stopCompose",
-  "containerEnv": {
-    "ROOT_PATH": "/mnt/harmonie-data-from-pds/ml",
-    "REFS_ROOT_PATH": "/app/refs",
-    "TEMP_ROOT": "/tmp/nwp-forecast-zarr-creator"
-  },
   "customizations": {
     "vscode": {
       "extensions": [
