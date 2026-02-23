@@ -13,7 +13,10 @@ DATA_COLLECTION = OrderedDict(
                     "hcc",
                     "lcc",
                     "mcc",
-                    # "tcc", # not in DINI
+                    # "total cloud cover" is present in DINI but as `cc`
+                    # shortname (according to kah@dmi.dk), but using the WMO
+                    # standard units of "percent" rather than a fraction
+                    # "tcc",
                     # "icei", # not in DINI
                     "mld",
                     # "prtp", # not in DINI
@@ -27,6 +30,9 @@ DATA_COLLECTION = OrderedDict(
                 ]
             },
         ),
+        # we include these separately from the other heightAboveGround
+        # variables because we want to include the `0m`-suffix in the variable
+        # name, to make it clear that these are surface variables
         dict(
             level_type="heightAboveGround",
             variables={
