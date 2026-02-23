@@ -10,9 +10,7 @@ services:
     working_dir: /app
     volumes:
       - .:/app
-      - ${HARMONIE_DATA_DIR:-./data/harmonie/ml}:/mnt/harmonie-data-from-pds/ml
-      - ${TMP_DIR:-./tmp}:/tmp
+      - ./data/harmonie/ml:/mnt/harmonie-data-from-pds/ml
+      - ./tmp:/tmp
     environment:
-      SRC_GRIB_ROOT_PATH: /mnt/harmonie-data-from-pds/ml
-      REFS_ROOT_PATH: /app/refs
       SRC_GRIB_TEMP_PATH: ""

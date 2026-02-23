@@ -36,25 +36,23 @@ available. If needed, you can override this before reopening the container:
 export DEV_CONTAINER_PLATFORM=linux/amd64
 ```
 
+The development container:
+
+- mounts this repo (i.e. `./app`) to `/app`
+- maps local input data (`./data/harmonie/ml`) to `/mnt/harmonie-data-from-pds/ml`
+- maps local `./tmp` to `/tmp`
+
+**note**: `SRC_GRIB_TEMP_PATH` is not set by default in the dev container, so
+`build_indexes_and_refs.sh` indexes directly from `SRC_GRIB_ROOT_PATH` rather
+than copying to a temp path inside the container. This is to avoid unnecessary
+copying of large GRIB files during development.
+
 To open a shell inside the already-running dev container from your host
 terminal:
 
 ```bash
 docker compose -f docker-compose.dev.yml exec app bash
 ```
-
-The development container:
-
-- mounts this repo to `/app`
-- maps local input data to `/mnt/harmonie-data-from-pds/ml`
-- maps local `./tmp` to `/tmp`
-- sets:
-  - `SRC_GRIB_ROOT_PATH=/mnt/harmonie-data-from-pds/ml`
-  - `REFS_ROOT_PATH=/app/refs`
-
-`SRC_GRIB_TEMP_PATH` is not set by default in the dev container, so
-`build_indexes_and_refs.sh` indexes directly from `SRC_GRIB_ROOT_PATH` unless
-you set `SRC_GRIB_TEMP_PATH` explicitly.
 
 ## 2. Prepare input data locally
 
