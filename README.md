@@ -46,6 +46,36 @@ variable.
 uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z
 ```
 
+### Intake Catalog Usage
+
+There are two ways to easily read the converted zarr datasets easily from AWS S3
+using the intake catalog in this repo. Either by reading the intake catalog directly from github, or by installing the `zarr_creator` package and using the `open_intake_catalog()`.
+
+#### 1. Open the catalog directly from GitHub
+
+```python
+import intake
+import isodate
+
+analysis_time = isodate.parse_datetime("2026-02-16T00:00:00Z")
+catalog = intake.open_catalog(
+    "https://raw.githubusercontent.com/dmidk/nwp-forecast-zarr-creator/main/zarr_creator/catalog/catalog.yml"
+)
+ds_dini_hl = catalog["height_levels"]._entry(analysis_time=analysis_time).to_dask()
+```
+
+#### 2. Open the packaged catalog with `open_intake_catalog()`
+
+```python
+import isodate
+
+from zarr_creator import open_intake_catalog
+
+analysis_time = isodate.parse_datetime("2026-02-16T00:00:00Z")
+catalog = open_intake_catalog()
+ds_dini_hl = catalog["height_levels"]._entry(analysis_time=analysis_time).to_dask()
+```
+
 ## Runtime Defaults
 
 Shared runtime defaults are defined in `script_defaults.sh`.

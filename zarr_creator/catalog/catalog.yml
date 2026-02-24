@@ -1,0 +1,40 @@
+plugins:
+  source:
+    - module: intake_xarray
+
+sources:
+  height_levels:
+    description: DINI control height-levels Zarr dataset for a selected analysis time
+    driver: zarr
+    parameters:
+      analysis_time:
+        type: datetime
+        description: Analysis time for the forecast (forecasts are currently converted 3-hourly, starting at 00:00)
+    args:
+      urlpath: s3://harmonie-zarr/dini/control/{{ analysis_time.strftime('%Y-%m-%dT%H%M%SZ') }}/height_levels.zarr/
+      storage_options:
+        anon: true
+
+  pressure_levels:
+    description: DINI control pressure-levels Zarr dataset for a selected analysis time
+    driver: zarr
+    parameters:
+      analysis_time:
+        type: datetime
+        description: Analysis time for the forecast (forecasts are currently converted 3-hourly, starting at 00:00)
+    args:
+      urlpath: s3://harmonie-zarr/dini/control/{{ analysis_time.strftime('%Y-%m-%dT%H%M%SZ') }}/pressure_levels.zarr/
+      storage_options:
+        anon: true
+
+  single_levels:
+    description: DINI control single-levels Zarr dataset for a selected analysis time
+    driver: zarr
+    parameters:
+      analysis_time:
+        type: datetime
+        description: Analysis time for the forecast (forecasts are currently converted 3-hourly, starting at 00:00)
+    args:
+      urlpath: s3://harmonie-zarr/dini/control/{{ analysis_time.strftime('%Y-%m-%dT%H%M%SZ') }}/single_levels.zarr/
+      storage_options:
+        anon: true

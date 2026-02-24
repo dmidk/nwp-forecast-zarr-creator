@@ -39,6 +39,11 @@ dev = [
     "matplotlib>=3.10.1",
     "nbconvert>=7.16.6",
     "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+]
+intake-catalog = [
+    "intake>=2.0.8",
+    "intake-xarray>=2.0.0",
 ]
 
 [build-system]
@@ -53,7 +58,12 @@ fallback_version = "0.0.0"
 include-package-data = true
 
 [tool.setuptools.package-data]
-zarr_creator = ["eccodes_defitions/**/*",]
+zarr_creator = ["eccodes_defitions/**/*", "catalog/*.yml"]
 
 [tool.uv.sources]
 gribscan = { git = "https://github.com/simonkamuk/gribscan", rev = "524f829405c576f2266276dc0a2ca669fcad8926" }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require external services or credentials",
+]
