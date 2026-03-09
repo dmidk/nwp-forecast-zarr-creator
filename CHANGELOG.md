@@ -6,16 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-### Changed
+
+### Added
 
 - Added a full dev-container workflow (compose/devcontainer/docs), local GRIB download tooling, and local-development zarr options to make day-to-day development reproducible and faster.
   [\#18](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/18),
   @leifdenby
+- Add intake catalog pointing to zarr datasets stored in AWS S3 bucket and usage instructions in README [\#20](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/20), @leifdenby
+
+### Changed
+
 - Standardized runtime path configuration and refs handling by introducing shared script defaults, renaming GRIB source/temp env vars, removing hardcoded refs paths, and enforcing a single refs timestamp directory format (`YYYY-MM-DDTHHMMZ`).
   [\#18](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/18),
   @leifdenby
 
 ## [v0.5.4]
+
 ### Fixed
 
 - Add missing deps to container file
