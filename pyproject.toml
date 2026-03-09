@@ -5,6 +5,7 @@ description = "zarr creation from harmonie dini forecasts"
 authors = [
     {name = "Kasper Stener Hintz", email = "kah@dmi.dk"},
     {name = "Eleni Briola", email = "elb@dmi.dk"},
+    {name = "Leif Denby", email = "lcd@dmi.dk"},
 ]
 dependencies = [
     "loguru>=0.7.3",
