@@ -5,7 +5,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y git curl libaec0 libaec-dev rsync tree
 COPY pyproject.toml README.md ./
 COPY zarr_creator ./zarr_creator
-COPY lib/gribscan ./lib/gribscan
 # copy over git metadata so that pdm-scm can detect version
 COPY .git ./.git
 # copy over entrypoint and runtime scripts

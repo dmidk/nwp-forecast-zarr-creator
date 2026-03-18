@@ -65,3 +65,8 @@ zarr_creator = ["eccodes_defitions/**/*", "catalog/*.yml"]
 
 [tool.uv.sources]
 gribscan = { git = "https://github.com/leifdenby/gribscan", rev = "feat/cf-cell-methods" }
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that require external services or credentials",
+]
