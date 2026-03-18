@@ -131,6 +131,120 @@ flowchart TB
   C7 -->|persisted via /tmp mount| H2
 ```
 
+## Runtime Defaults
+
+Shared runtime defaults are defined in `script_defaults.sh`.
+Both `run.sh` and `build_indexes_and_refs.sh` source this file.
+
+You can override any default by exporting the corresponding environment variable
+before running either script.
+
+| Variable | Script default | Default in container | Meaning |
+|---|---|---|---|
+| `SRC_GRIB_ROOT_PATH` | `/mnt/harmonie-data-from-pds/ml` | *as script default* | Path where source GRIB forecast files are read from. |
+| `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written. |
+| `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
+| `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
+| `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
+
+For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
+unset.
+
+Example overrides:
+
+```bash
+export MAX_HOUR=12
+export SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator
+./build_indexes_and_refs.sh 2025-02-27T15:00:00Z
+```
+
+Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (default script behavior):
+
+```mermaid
+flowchart TB
+  subgraph H["Host OS"]
+    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
+    H2["/tmp (optional bind mount target)"]
+  end
+
+  subgraph C["Container"]
+    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
+    C2["build_indexes_and_refs.sh"]
+    C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
+    C4["zarr_creator"]
+    C5["S3 bucket<br/>(final zarr output)"]
+    C6["/tmp/dini-recent<br/>(local zarr copy)"]
+  end
+
+  H1 -->|mounted as| C1
+  C1 -->|read by| C2
+  C2 -->|writes to| C3
+  C3 -->|read by| C4
+  C4 -->|writes to| C5
+  C4 -->|writes to| C6
+  C6 -->|can be persisted via /tmp mount| H2
+```
+
+Data flow when `SRC_GRIB_TEMP_PATH` is **set** (copy-before-indexing):
+
+```mermaid
+flowchart TB
+  subgraph H["Host OS"]
+    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
+    H2["/tmp<br/>(bind mount target)"]
+  end
+
+  subgraph C["Container"]
+    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
+    C2["${SRC_GRIB_TEMP_PATH}<br/>default=unset (prod Docker default=/tmp/nwp-forecast-zarr-creator)"]
+    C3["build_indexes_and_refs.sh"]
+    C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
+    C5["zarr_creator"]
+    C6["S3 bucket<br/>(final zarr output)"]
+    C7["/tmp/dini-recent<br/>(local zarr copy)"]
+  end
+
+  H1 -->|mounted as| C1
+  H2 -->|mounted as /tmp| C2
+  C1 -->|read by| C3
+  C3 -->|copied to| C2
+  C2 -->|read by for index build| C3
+  C3 -->|writes to| C4
+  C4 -->|read by| C5
+  C5 -->|writes to| C6
+  C5 -->|writes to| C7
+  C7 -->|persisted via /tmp mount| H2
+```
+
+### Intake Catalog Usage
+
+There are two ways to easily read the converted zarr datasets easily from AWS S3
+using the intake catalog in this repo. Either by reading the intake catalog directly from github, or by installing the `zarr_creator` package and using the `open_intake_catalog()`.
+
+#### 1. Open the catalog directly from GitHub
+
+```python
+import intake
+import isodate
+
+analysis_time = isodate.parse_datetime("2026-02-16T00:00:00Z")
+catalog = intake.open_catalog(
+    "https://raw.githubusercontent.com/dmidk/nwp-forecast-zarr-creator/main/zarr_creator/catalog/catalog.yml"
+)
+ds_dini_hl = catalog["height_levels"]._entry(analysis_time=analysis_time).to_dask()
+```
+
+#### 2. Open the packaged catalog with `open_intake_catalog()`
+
+```python
+import isodate
+
+from zarr_creator import open_intake_catalog
+
+analysis_time = isodate.parse_datetime("2026-02-16T00:00:00Z")
+catalog = open_intake_catalog()
+ds_dini_hl = catalog["height_levels"]._entry(analysis_time=analysis_time).to_dask()
+```
 
 # TODO
 

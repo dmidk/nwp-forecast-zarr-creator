@@ -28,6 +28,14 @@ From the repository root in VS Code:
 2. VS Code builds from `Dockerfile` and starts `docker-compose.dev.yml`
 3. `uv sync` runs automatically after container creation
 
+On Apple Silicon Macs, the dev compose config defaults to
+`DEV_CONTAINER_PLATFORM=linux/amd64` so dependency wheels for `eccodeslib` are
+available. If needed, you can override this before reopening the container:
+
+```bash
+export DEV_CONTAINER_PLATFORM=linux/amd64
+```
+
 The development container:
 
 - mounts this repo (i.e. `./app`) to `/app`

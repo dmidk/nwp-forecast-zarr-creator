@@ -5,6 +5,7 @@ description = "zarr creation from harmonie dini forecasts"
 authors = [
     {name = "Kasper Stener Hintz", email = "kah@dmi.dk"},
     {name = "Eleni Briola", email = "elb@dmi.dk"},
+    {name = "Leif Denby", email = "lcd@dmi.dk"},
 ]
 dependencies = [
     "loguru>=0.7.3",
@@ -40,6 +41,12 @@ dev = [
     "matplotlib>=3.10.1",
     "nbconvert>=7.16.6",
     "pre-commit>=4.5.1",
+    "pytest>=9.0.2",
+]
+intake-catalog = [
+    "intake>=2.0.8",
+    "intake-xarray>=2.0.0",
+    "pre-commit>=4.5.1",
 ]
 
 [build-system]
@@ -54,7 +61,7 @@ fallback_version = "0.0.0"
 include-package-data = true
 
 [tool.setuptools.package-data]
-zarr_creator = ["eccodes_defitions/**/*",]
+zarr_creator = ["eccodes_defitions/**/*", "catalog/*.yml"]
 
 [tool.uv.sources]
 gribscan = { git = "https://github.com/leifdenby/gribscan", rev = "feat/cf-cell-methods" }
