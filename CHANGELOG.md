@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Added extraction of instantaneous surface downwelling shortwave and surface longwave downwelling radiation fluxes as `swavr0m` and `lwavr0m` respectively. The time-step accumulated fluxes are extracted as `swavr0m_accum` and `lwavr0m_accum` to distinguish them from the instantaneous fluxes. [\#19](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/19), @leifdenby
 - Added a full dev-container workflow (compose/devcontainer/docs), local GRIB download tooling, and local-development zarr options to make day-to-day development reproducible and faster.
   [\#18](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/18),
   @leifdenby
