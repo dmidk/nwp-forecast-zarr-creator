@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Added vertical velocity, `tw`, on pressure levels to zarr output. [\#24](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/24), @khintz
+- Added orography, ´z0m´, on single levels to zarr output. [\#26](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/26), @khintz
 
 ### Maintenance
 
