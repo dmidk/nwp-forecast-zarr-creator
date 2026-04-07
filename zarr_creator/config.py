@@ -26,7 +26,7 @@ DATA_COLLECTION = OrderedDict(
                     # "pstbc", # not in DINI
                     # "sf", # not in DINI
                     # "xhail", # not in DINI
-                    "lsm"
+                    "lsm",
                 ]
             },
         ),
