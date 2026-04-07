@@ -26,7 +26,7 @@ DATA_COLLECTION = OrderedDict(
                     # "pstbc", # not in DINI
                     # "sf", # not in DINI
                     # "xhail", # not in DINI
-                    "lsm",
+                    "lsm"
                 ]
             },
         ),
@@ -41,6 +41,7 @@ DATA_COLLECTION = OrderedDict(
                 "lwavr": None,
                 "lwavr_accum": None,
                 "vis": None,
+                "z": None,
             },
             level_name_mapping="{var_name}0m",
         ),
