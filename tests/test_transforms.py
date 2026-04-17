@@ -1,7 +1,10 @@
 import numpy as np
 import xarray as xr
 
-from zarr_creator.transforms import apply_variable_transforms, resolve_variable_transforms
+from zarr_creator.transforms import (
+    apply_variable_transforms,
+    resolve_variable_transforms,
+)
 
 
 def test_apply_variable_transforms_renames_and_drops_time_dimension():
@@ -72,12 +75,14 @@ def test_resolve_variable_transforms_ignores_missing_variables_and_keeps_renamed
         coords={"time": [0, 1], "x": [0, 1, 2], "y": [0, 1, 2, 3]},
     )
 
-    rename_map, scale_map, attrs_map, drop_time_dimension_for = resolve_variable_transforms(
-        ds_without_target,
-        rename_map={"z0m": "orography"},
-        scale_map={"z0m": 1.0 / 9.82},
-        attrs_map={"z0m": {"units": "m"}},
-        drop_time_dimension_for=["orography"],
+    rename_map, scale_map, attrs_map, drop_time_dimension_for = (
+        resolve_variable_transforms(
+            ds_without_target,
+            rename_map={"z0m": "orography"},
+            scale_map={"z0m": 1.0 / 9.82},
+            attrs_map={"z0m": {"units": "m"}},
+            drop_time_dimension_for=["orography"],
+        )
     )
 
     assert rename_map == {}
@@ -92,12 +97,14 @@ def test_resolve_variable_transforms_ignores_missing_variables_and_keeps_renamed
         coords={"time": [0, 1], "x": [0, 1, 2], "y": [0, 1, 2, 3]},
     )
 
-    rename_map, scale_map, attrs_map, drop_time_dimension_for = resolve_variable_transforms(
-        ds_with_target,
-        rename_map={"z0m": "orography"},
-        scale_map={"z0m": 1.0 / 9.82},
-        attrs_map={"z0m": {"units": "m"}},
-        drop_time_dimension_for=["orography"],
+    rename_map, scale_map, attrs_map, drop_time_dimension_for = (
+        resolve_variable_transforms(
+            ds_with_target,
+            rename_map={"z0m": "orography"},
+            scale_map={"z0m": 1.0 / 9.82},
+            attrs_map={"z0m": {"units": "m"}},
+            drop_time_dimension_for=["orography"],
+        )
     )
 
     assert rename_map == {"z0m": "orography"}

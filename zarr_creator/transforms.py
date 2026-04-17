@@ -21,7 +21,9 @@ def resolve_variable_transforms(
     }
     scale_map = scale_map or {}
     active_scale_map = {
-        var_name: factor for var_name, factor in scale_map.items() if var_name in ds.data_vars
+        var_name: factor
+        for var_name, factor in scale_map.items()
+        if var_name in ds.data_vars
     }
     attrs_map = attrs_map or {}
     active_attrs_map = {
@@ -41,7 +43,9 @@ def resolve_variable_transforms(
         elif var_name in renamed_variables:
             resolved_drop_time_dimension_for.append(var_name)
 
-    resolved_drop_time_dimension_for = list(dict.fromkeys(resolved_drop_time_dimension_for))
+    resolved_drop_time_dimension_for = list(
+        dict.fromkeys(resolved_drop_time_dimension_for)
+    )
     return (
         active_rename_map,
         active_scale_map,
