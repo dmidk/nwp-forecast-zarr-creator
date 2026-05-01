@@ -20,7 +20,7 @@ def test_apply_variable_transforms_renames_and_drops_time_dimension():
         },
     )
 
-    transformed = apply_variable_transforms(
+    ds_transformed = apply_variable_transforms(
         ds,
         scale_map={"z0m": 1.0 / 9.82},
         rename_map={"z0m": "orography"},
@@ -36,18 +36,18 @@ def test_apply_variable_transforms_renames_and_drops_time_dimension():
         drop_time_dimension_for=["orography"],
     )
 
-    assert "z0m" not in transformed.data_vars
-    assert "orography" in transformed.data_vars
-    assert transformed["orography"].dims == ("x", "y")
-    assert transformed["t2m"].dims == ("time", "x", "y")
+    assert "z0m" not in ds_transformed.data_vars
+    assert "orography" in ds_transformed.data_vars
+    assert ds_transformed["orography"].dims == ("x", "y")
+    assert ds_transformed["t2m"].dims == ("time", "x", "y")
     np.testing.assert_allclose(
-        transformed["orography"].values,
+        ds_transformed["orography"].values,
         ds["z0m"].isel(time=0).values / 9.82,
     )
-    assert transformed["orography"].attrs["units"] == "m"
-    assert transformed["orography"].attrs["standard_name"] == "surface_altitude"
-    assert transformed["orography"].attrs["cfName"] == "surface_altitude"
-    assert transformed["orography"].attrs["name"] == "Surface altitude (orography)"
+    assert ds_transformed["orography"].attrs["units"] == "m"
+    assert ds_transformed["orography"].attrs["standard_name"] == "surface_altitude"
+    assert ds_transformed["orography"].attrs["cfName"] == "surface_altitude"
+    assert ds_transformed["orography"].attrs["name"] == "Surface altitude (orography)"
 
 
 def test_apply_variable_transforms_raises_on_rename_collision():
