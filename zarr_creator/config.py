@@ -3,6 +3,8 @@
 # and a name-mapping may also be defined
 from collections import OrderedDict
 
+from .transforms import derive_orography_from_geopotential
+
 DATA_COLLECTION = OrderedDict(
     single_levels=[
         dict(
@@ -41,9 +43,14 @@ DATA_COLLECTION = OrderedDict(
                 "lwavr": None,
                 "lwavr_accum": None,
                 "vis": None,
-                "z": None,
             },
             level_name_mapping="{var_name}0m",
+        ),
+        dict(
+            level_type="heightAboveGround",
+            variables={
+                "orography": lambda ds: derive_orography_from_geopotential(ds["z"]),
+            },
         ),
         dict(
             level_type="heightAboveGround",

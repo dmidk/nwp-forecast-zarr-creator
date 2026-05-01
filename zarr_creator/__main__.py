@@ -13,26 +13,12 @@ from . import __version__
 from .config import DATA_COLLECTION
 from .grib_definitions import set_local_eccodes_definitions_path
 from .read_source import read_level_type_data
-from .transforms import apply_variable_transforms, resolve_variable_transforms
 from .write_zarr import write_output_zarrs
 
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
 LOCAL_COPY_STORAGE_PATH = Path("/tmp/dini-recent")
-DEFAULT_VARIABLE_SCALE_FACTORS = {"z0m": 1.0 / 9.82}
-DEFAULT_VARIABLE_RENAMES = {"z0m": "orography"}
-DEFAULT_VARIABLE_ATTRIBUTE_UPDATES = {
-    "z0m": {
-        "units": "m",
-        "standard_name": "surface_altitude",
-        "cfName": "surface_altitude",
-        "long_name": "Surface altitude (orography)",
-        "name": "Surface altitude (orography)",
-    }
-}
-DEFAULT_DROP_TIME_DIMENSION_FOR = ["orography"]
-
 
 set_local_eccodes_definitions_path()
 
@@ -66,39 +52,6 @@ def _setup_argparse():
         ),
     )
 
-    argparser.add_argument(
-        "--scale-variable",
-        action="append",
-        default=[],
-        metavar="VARIABLE:FACTOR",
-        help=(
-            "Scale an output variable by a multiplicative factor (can be provided "
-            "multiple times). Example: --scale-variable z0m:0.10183299389002037"
-        ),
-    )
-
-    argparser.add_argument(
-        "--rename-variable",
-        action="append",
-        default=[],
-        metavar="OLD:NEW",
-        help=(
-            "Rename an output variable (can be provided multiple times). "
-            "Example: --rename-variable z0m:orography"
-        ),
-    )
-
-    argparser.add_argument(
-        "--drop-time-dimension-for",
-        action="append",
-        default=[],
-        metavar="VARIABLE",
-        help=(
-            "Drop the time dimension from a variable by selecting the first "
-            "timestep (can be provided multiple times)."
-        ),
-    )
-
     return argparser
 
 
@@ -109,45 +62,6 @@ def cli(argv=None):
 
     argparser = _setup_argparse()
     args = argparser.parse_args(argv)
-
-    scale_map = DEFAULT_VARIABLE_SCALE_FACTORS.copy()
-    for item in args.scale_variable:
-        if ":" not in item:
-            raise ValueError(
-                "Invalid --scale-variable value. Expected format `VARIABLE:FACTOR`, "
-                f"got `{item}`"
-            )
-        var_name, raw_factor = item.split(":", 1)
-        if not var_name or not raw_factor:
-            raise ValueError(
-                "Invalid --scale-variable value. VARIABLE and FACTOR must both be non-empty"
-            )
-        try:
-            factor = float(raw_factor)
-        except ValueError as exc:
-            raise ValueError(
-                f"Invalid --scale-variable value. FACTOR must be numeric, got `{raw_factor}`"
-            ) from exc
-        scale_map[var_name] = factor
-
-    rename_map = DEFAULT_VARIABLE_RENAMES.copy()
-    for item in args.rename_variable:
-        if ":" not in item:
-            raise ValueError(
-                "Invalid --rename-variable value. Expected format `OLD:NEW`, "
-                f"got `{item}`"
-            )
-        old_name, new_name = item.split(":", 1)
-        if not old_name or not new_name:
-            raise ValueError(
-                "Invalid --rename-variable value. OLD and NEW must both be non-empty"
-            )
-        rename_map[old_name] = new_name
-
-    drop_time_dimension_for = [
-        *DEFAULT_DROP_TIME_DIMENSION_FOR,
-        *args.drop_time_dimension_for,
-    ]
 
     logger.remove()
     logger.add(sys.stderr, level=args.log_level.upper())
@@ -165,6 +79,15 @@ def cli(argv=None):
             )
 
             for var_name, levels in variables.items():
+                if callable(levels):
+                    da = levels(ds_level_type)
+                    ds_part[var_name] = da
+                    if "grid_mapping" in da.attrs:
+                        ds_part[da.attrs["grid_mapping"]] = ds_level_type[
+                            da.attrs["grid_mapping"]
+                        ]
+                    continue
+
                 da = ds_level_type[var_name]
 
                 if levels is None:
@@ -206,27 +129,6 @@ def cli(argv=None):
         for coord in ds_part.coords:
             if all(coord not in ds_part[v].coords for v in list(ds_part.data_vars)):
                 ds_part = ds_part.drop_vars(coord)
-
-        (
-            part_rename_map,
-            part_scale_map,
-            part_attrs_map,
-            part_drop_time_dimension_for,
-        ) = resolve_variable_transforms(
-            ds_part,
-            rename_map=rename_map,
-            scale_map=scale_map,
-            attrs_map=DEFAULT_VARIABLE_ATTRIBUTE_UPDATES,
-            drop_time_dimension_for=drop_time_dimension_for,
-        )
-
-        ds_part = apply_variable_transforms(
-            ds_part,
-            rename_map=part_rename_map,
-            scale_map=part_scale_map,
-            attrs_map=part_attrs_map,
-            drop_time_dimension_for=part_drop_time_dimension_for,
-        )
 
         parts[part_id] = ds_part
 
