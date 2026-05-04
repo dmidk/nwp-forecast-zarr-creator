@@ -1,140 +1,70 @@
+"""Tests for zarr_creator.transforms.derive_orography_from_geopotential.
+
+Verifies scaling, time-dimension handling, attribute assignment, and
+grid_mapping passthrough.
+"""
+
 import numpy as np
 import xarray as xr
 
-from zarr_creator.transforms import (
-    apply_variable_transforms,
-    resolve_variable_transforms,
-)
+from zarr_creator.transforms import derive_orography_from_geopotential
 
 
-def test_apply_variable_transforms_renames_and_drops_time_dimension():
-    ds = xr.Dataset(
-        data_vars={
-            "z0m": (("time", "x", "y"), np.arange(2 * 3 * 4).reshape(2, 3, 4)),
-            "t2m": (("time", "x", "y"), np.ones((2, 3, 4))),
-        },
-        coords={
-            "time": [0, 1],
-            "x": [0, 1, 2],
-            "y": [0, 1, 2, 3],
-        },
+def _make_geopotential(values, time_steps=2, grid_mapping=None):
+    """Build a synthetic geopotential DataArray with (time, x, y) dims."""
+    da = xr.DataArray(
+        np.broadcast_to(values, (time_steps, *np.shape(values))).copy(),
+        dims=("time", "x", "y"),
+        coords={"time": list(range(time_steps))},
     )
+    if grid_mapping is not None:
+        da.attrs["grid_mapping"] = grid_mapping
+    return da
 
-    ds_transformed = apply_variable_transforms(
-        ds,
-        scale_map={"z0m": 1.0 / 9.82},
-        rename_map={"z0m": "orography"},
-        attrs_map={
-            "orography": {
-                "units": "m",
-                "standard_name": "surface_altitude",
-                "cfName": "surface_altitude",
-                "long_name": "Surface altitude (orography)",
-                "name": "Surface altitude (orography)",
-            }
-        },
-        drop_time_dimension_for=["orography"],
+
+def test_scales_by_inverse_gravity_and_drops_time():
+    """Output values equal input / 9.82 and the time dimension is removed."""
+    geopotential = _make_geopotential([[9.82, 19.64], [29.46, 39.28]])
+    result = derive_orography_from_geopotential(geopotential)
+
+    assert "time" not in result.dims
+    np.testing.assert_allclose(result.values, [[1.0, 2.0], [3.0, 4.0]])
+
+
+def test_uses_first_timestep():
+    """Only the first timestep is used; later timesteps are ignored."""
+    data = np.array([[1.0, 2.0]])
+    da = xr.DataArray(
+        np.stack([data * 9.82, data * 9.82 * 99]),
+        dims=("time", "x", "y"),
+        coords={"time": [0, 1]},
     )
+    result = derive_orography_from_geopotential(da)
 
-    assert "z0m" not in ds_transformed.data_vars
-    assert "orography" in ds_transformed.data_vars
-    assert ds_transformed["orography"].dims == ("x", "y")
-    assert ds_transformed["t2m"].dims == ("time", "x", "y")
-    np.testing.assert_allclose(
-        ds_transformed["orography"].values,
-        ds["z0m"].isel(time=0).values / 9.82,
-    )
-    assert ds_transformed["orography"].attrs["units"] == "m"
-    assert ds_transformed["orography"].attrs["standard_name"] == "surface_altitude"
-    assert ds_transformed["orography"].attrs["cfName"] == "surface_altitude"
-    assert ds_transformed["orography"].attrs["name"] == "Surface altitude (orography)"
+    np.testing.assert_allclose(result.values, [[1.0, 2.0]])
 
 
-def test_apply_variable_transforms_raises_on_rename_collision():
-    ds = xr.Dataset(
-        data_vars={
-            "a": (("x",), [1, 2]),
-            "b": (("x",), [3, 4]),
-        },
-        coords={"x": [0, 1]},
-    )
+def test_sets_expected_attrs():
+    """Result carries the standard orography CF attributes."""
+    result = derive_orography_from_geopotential(_make_geopotential([[0.0]]))
 
-    try:
-        apply_variable_transforms(ds, rename_map={"a": "b"})
-    except ValueError as exc:
-        assert "already exists" in str(exc)
-    else:
-        raise AssertionError("Expected ValueError for rename collision")
+    assert result.attrs["units"] == "m"
+    assert result.attrs["standard_name"] == "surface_altitude"
+    assert result.attrs["cfName"] == "surface_altitude"
+    assert result.attrs["long_name"] == "Surface altitude (orography)"
+    assert result.attrs["name"] == "Surface altitude (orography)"
 
 
-def test_resolve_variable_transforms_ignores_missing_variables_and_keeps_renamed_drop_targets():
-    ds_without_target = xr.Dataset(
-        data_vars={
-            "t2m": (("time", "x", "y"), np.ones((2, 3, 4))),
-        },
-        coords={"time": [0, 1], "x": [0, 1, 2], "y": [0, 1, 2, 3]},
-    )
+def test_preserves_grid_mapping_when_present():
+    """grid_mapping attr is forwarded from the input to the result."""
+    da = _make_geopotential([[0.0]], grid_mapping="lambert_conformal_conic")
+    result = derive_orography_from_geopotential(da)
 
-    rename_map, scale_map, attrs_map, drop_time_dimension_for = (
-        resolve_variable_transforms(
-            ds_without_target,
-            rename_map={"z0m": "orography"},
-            scale_map={"z0m": 1.0 / 9.82},
-            attrs_map={"z0m": {"units": "m"}},
-            drop_time_dimension_for=["orography"],
-        )
-    )
-
-    assert rename_map == {}
-    assert scale_map == {}
-    assert attrs_map == {}
-    assert drop_time_dimension_for == []
-
-    ds_with_target = xr.Dataset(
-        data_vars={
-            "z0m": (("time", "x", "y"), np.arange(2 * 3 * 4).reshape(2, 3, 4)),
-        },
-        coords={"time": [0, 1], "x": [0, 1, 2], "y": [0, 1, 2, 3]},
-    )
-
-    rename_map, scale_map, attrs_map, drop_time_dimension_for = (
-        resolve_variable_transforms(
-            ds_with_target,
-            rename_map={"z0m": "orography"},
-            scale_map={"z0m": 1.0 / 9.82},
-            attrs_map={"z0m": {"units": "m"}},
-            drop_time_dimension_for=["orography"],
-        )
-    )
-
-    assert rename_map == {"z0m": "orography"}
-    assert scale_map == {"z0m": 1.0 / 9.82}
-    assert attrs_map == {"orography": {"units": "m"}}
-    assert drop_time_dimension_for == ["orography"]
-
-    transformed = apply_variable_transforms(
-        ds_with_target,
-        rename_map=rename_map,
-        scale_map=scale_map,
-        attrs_map=attrs_map,
-        drop_time_dimension_for=drop_time_dimension_for,
-    )
-
-    assert "orography" in transformed.data_vars
-    assert transformed["orography"].dims == ("x", "y")
-    assert transformed["orography"].attrs["units"] == "m"
+    assert result.attrs["grid_mapping"] == "lambert_conformal_conic"
 
 
-def test_apply_variable_transforms_scales_variable():
-    ds = xr.Dataset(
-        data_vars={
-            "z0m": (("x", "y"), np.array([[9.82, 19.64], [29.46, 39.28]])),
-        },
-        coords={"x": [0, 1], "y": [0, 1]},
-    )
+def test_omits_grid_mapping_when_absent():
+    """grid_mapping is not added to the result if absent from the input."""
+    result = derive_orography_from_geopotential(_make_geopotential([[0.0]]))
 
-    transformed = apply_variable_transforms(ds, scale_map={"z0m": 1.0 / 9.82})
-    np.testing.assert_allclose(
-        transformed["z0m"].values,
-        np.array([[1.0, 2.0], [3.0, 4.0]]),
-    )
+    assert "grid_mapping" not in result.attrs
