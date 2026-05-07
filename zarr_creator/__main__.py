@@ -20,7 +20,6 @@ DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
 LOCAL_COPY_STORAGE_PATH = Path("/tmp/dini-recent")
 
-
 set_local_eccodes_definitions_path()
 
 
@@ -80,6 +79,15 @@ def cli(argv=None):
             )
 
             for var_name, levels in variables.items():
+                if callable(levels):
+                    da = levels(ds_level_type)
+                    ds_part[var_name] = da
+                    if "grid_mapping" in da.attrs:
+                        ds_part[da.attrs["grid_mapping"]] = ds_level_type[
+                            da.attrs["grid_mapping"]
+                        ]
+                    continue
+
                 da = ds_level_type[var_name]
 
                 if levels is None:
