@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [Unrealesed]
+## [v0.7.0]
+
+This release introduces new zarr output variables (vertical velocity, orography) and a container image build workflow, while improving Docker and dev-container configurations for better maintainability.
 
 ### Added
 
