@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v0.7.0]
 
+This release introduces new zarr output variables (vertical velocity, orography) and a container image build workflow, while improving Docker and dev-container configurations for better maintainability.
+
 ### Added
 
 - Added workflow for building container image and pushing to ghcr.io registry. [\#29](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/29), @khintz
