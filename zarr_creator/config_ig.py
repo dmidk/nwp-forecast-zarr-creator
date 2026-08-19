@@ -5,6 +5,73 @@ from collections import OrderedDict
 
 from .transforms import derive_orography_from_geopotential
 
+PROJECTION_IDENTIFIER = "ig_projection"
+PROJECTION_WKT = """
+PROJCRS["DMI HARMONIE IG lambert projection",
+    BASEGEOGCRS["DMI HARMONIE IG lambert CRS",
+        DATUM["DMI HARMONIE IG lambert datum",
+            ELLIPSOID["Sphere", 6371229, 0,
+                LENGTHUNIT["metre", 1,
+                    ID["EPSG", 9001]
+                ]
+            ]
+        ],
+        PRIMEM["Greenwich", 0,
+            ANGLEUNIT["degree", 0.0174532925199433,
+                ID["EPSG", 9122]
+            ]
+        ]
+    ],
+    CONVERSION["Lambert Conic Conformal (2SP)",
+        METHOD["Lambert Conic Conformal (2SP)",
+            ID["EPSG", 9802]
+        ],
+        PARAMETER["Latitude of false origin", 55.5,
+            ANGLEUNIT["degree", 0.0174532925199433,
+                ID["EPSG", 8821]
+            ]
+        ],
+        PARAMETER["Longitude of false origin", -8,
+            ANGLEUNIT["degree", 0.0174532925199433,
+                ID["EPSG", 8822]
+            ]
+        ],
+        PARAMETER["Latitude of 1st standard parallel", 55.5,
+            ANGLEUNIT["degree", 0.0174532925199433,
+                ID["EPSG", 8823]
+            ]
+        ],
+        PARAMETER["Latitude of 2nd standard parallel", 55.5,
+            ANGLEUNIT["degree", 0.0174532925199433,
+                ID["EPSG", 8824]
+            ]
+        ],
+        PARAMETER["Easting at false origin", 0,
+            LENGTHUNIT["metre", 1],
+            ID["EPSG", 8826]
+        ],
+        PARAMETER["Northing at false origin", 0,
+            LENGTHUNIT["metre", 1],
+            ID["EPSG", 8827]
+        ]
+    ],
+    CS[Cartesian, 2],
+    AXIS["(E)", east,
+        ORDER[1],
+        LENGTHUNIT["Metre", 1]
+    ],
+    AXIS["(N)", north,
+        ORDER[2],
+        LENGTHUNIT["Metre", 1]
+    ],
+    USAGE[
+        AREA["Denmark and surrounding regions"],
+        BBOX[37, -43, 70, 40],
+        SCOPE["IG Harmonie forecast projection"]
+    ]
+]
+""".strip()
+
 DATA_COLLECTION = OrderedDict(
     single_levels=[
         dict(
@@ -38,9 +105,9 @@ DATA_COLLECTION = OrderedDict(
         dict(
             level_type="heightAboveGround",
             variables={
-                "swavr": None,
+                # "swavr": None,
                 "swavr_accum": None,
-                "lwavr": None,
+                # "lwavr": None,
                 "lwavr_accum": None,
                 "vis": None,
             },
