@@ -6,67 +6,67 @@ from collections import OrderedDict
 from .transforms import derive_orography_from_geopotential
 
 PROJECTION_IDENTIFIER = "ig_projection"
+# Note this WKT string gives consistent 0.2 meter difference in y coordinate wrt the GRIB data when transforming lat/lon to x/y 
 PROJECTION_WKT = """
 PROJCRS["DMI HARMONIE IG lambert projection",
     BASEGEOGCRS["DMI HARMONIE IG lambert CRS",
         DATUM["DMI HARMONIE IG lambert datum",
             ELLIPSOID["Sphere", 6371229, 0,
-                LENGTHUNIT["metre", 1,
-                    ID["EPSG", 9001]
+                LENGTHUNIT["metre",1,
+                    ID["EPSG",9001]
                 ]
             ]
         ],
-        PRIMEM["Greenwich", 0,
-            ANGLEUNIT["degree", 0.0174532925199433,
-                ID["EPSG", 9122]
-            ]
+        PRIMEM["Greenwich",0,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8901]
         ]
     ],
     CONVERSION["Lambert Conic Conformal (2SP)",
         METHOD["Lambert Conic Conformal (2SP)",
-            ID["EPSG", 9802]
+            ID["EPSG",9802]
         ],
-        PARAMETER["Latitude of false origin", 55.5,
-            ANGLEUNIT["degree", 0.0174532925199433,
-                ID["EPSG", 8821]
-            ]
+        PARAMETER["Latitude of false origin",72,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8821]
         ],
-        PARAMETER["Longitude of false origin", -8,
-            ANGLEUNIT["degree", 0.0174532925199433,
-                ID["EPSG", 8822]
-            ]
+        PARAMETER["Longitude of false origin",324,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8822]
         ],
-        PARAMETER["Latitude of 1st standard parallel", 55.5,
-            ANGLEUNIT["degree", 0.0174532925199433,
-                ID["EPSG", 8823]
-            ]
+        PARAMETER["Latitude of 1st standard parallel",72,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8823]
         ],
-        PARAMETER["Latitude of 2nd standard parallel", 55.5,
-            ANGLEUNIT["degree", 0.0174532925199433,
-                ID["EPSG", 8824]
-            ]
+        PARAMETER["Latitude of 2nd standard parallel",72,
+            ANGLEUNIT["degree",0.0174532925199433],
+            ID["EPSG",8824]
         ],
-        PARAMETER["Easting at false origin", 0,
-            LENGTHUNIT["metre", 1],
-            ID["EPSG", 8826]
+        PARAMETER["Easting at false origin",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8826]
         ],
-        PARAMETER["Northing at false origin", 0,
-            LENGTHUNIT["metre", 1],
-            ID["EPSG", 8827]
+        PARAMETER["Northing at false origin",0,
+            LENGTHUNIT["metre",1],
+            ID["EPSG",8827]
         ]
     ],
-    CS[Cartesian, 2],
-    AXIS["(E)", east,
+    CS[Cartesian,2],
+    AXIS["(E)",east,
         ORDER[1],
-        LENGTHUNIT["Metre", 1]
+        LENGTHUNIT["metre",1,
+            ID["EPSG",9001]
+        ]
     ],
-    AXIS["(N)", north,
+    AXIS["(N)",north,
         ORDER[2],
-        LENGTHUNIT["Metre", 1]
-    ],
+        LENGTHUNIT["metre",1,
+            ID["EPSG",9001]
+        ]
+    ]
     USAGE[
-        AREA["Denmark and surrounding regions"],
-        BBOX[37, -43, 70, 40],
+        AREA["Greenland and surrounding regions"],
+        BBOX[55, 250, 87, -398],
         SCOPE["IG Harmonie forecast projection"]
     ]
 ]
