@@ -8,6 +8,7 @@ source "${SCRIPT_DIR}/script_defaults.sh"
 echo "SRC_GRIB_ROOT_PATH: ${SRC_GRIB_ROOT_PATH}"
 echo "REFS_ROOT_PATH: ${REFS_ROOT_PATH}"
 echo "SRC_GRIB_TEMP_PATH: ${SRC_GRIB_TEMP_PATH:-not set}"
+echo "SUITE_NAME: ${SUITE_NAME}"
 
 while true; do
     # find the nearest three hour interval to the current time, e.g. 00:00,
@@ -55,7 +56,7 @@ while true; do
         echo "Running zarr conversion for analysis time $analysis_time"
 
         while true; do
-            uv run python -m zarr_creator --t_analysis "$analysis_time"
+            uv run python -m zarr_creator --t_analysis "$analysis_time" --suite-name "$SUITE_NAME"
             # check if the script was successful with the exit code
             if [ $? -eq 0 ]; then
                 # delete temporary storage if it was used
