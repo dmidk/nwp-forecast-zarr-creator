@@ -24,7 +24,7 @@ from .write_zarr import write_output_zarrs
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
-LOCAL_COPY_STORAGE_PATH = Path("/tmp/dini-recent")
+LOCAL_COPY_STORAGE_PATH = Path("/tmp/{suite_name}-recent")
 
 set_local_eccodes_definitions_path()
 
@@ -54,7 +54,7 @@ def _setup_argparse():
         action="store_true",
         help=(
             "If provided, skip uploading zarr outputs to the S3 bucket. "
-            "A local copy is still written to /tmp/dini-recent."
+            "A local copy is still written to /tmp/{suite-name}-recent."
         ),
     )
 
@@ -90,6 +90,8 @@ def cli(argv=None):
     else:
         raise ValueError(f"Unsupported suite name: {args.suite_name}")
 
+    local_copy_path = LOCAL_COPY_STORAGE_PATH.format(suite_name=args.suite_name)
+    
     parts = {}
     for part_id, part_details in data_collection.items():
         ds_part = xr.Dataset()
@@ -183,8 +185,9 @@ def cli(argv=None):
             dataset_id=part_id,
             rechunk_to=rechunk_to,
             t_analysis=args.t_analysis,
+            suite_name=args.suite_name,
             skip_s3_bucket_upload=args.skip_s3_bucket_upload,
-            local_copy_path=LOCAL_COPY_STORAGE_PATH,
+            local_copy_path=local_copy_path,
         )
 
 
