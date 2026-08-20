@@ -91,7 +91,7 @@ def cli(argv=None):
         raise ValueError(f"Unsupported suite name: {args.suite_name}")
 
     local_copy_path = LOCAL_COPY_STORAGE_PATH.format(suite_name=args.suite_name)
-    
+
     parts = {}
     for part_id, part_details in data_collection.items():
         ds_part = xr.Dataset()

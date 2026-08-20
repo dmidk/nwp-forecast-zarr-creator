@@ -79,7 +79,10 @@ def write_output_zarrs(
 
     t_analysis_formatted = t_analysis.isoformat().replace(":", "").replace("+0000", "Z")
     prefix = OUTPUT_PREFIX_FORMAT.format(
-        suite_name=suite_name, member=member, t_analysis_formatted=t_analysis_formatted, dataset_id=dataset_id
+        suite_name=suite_name,
+        member=member,
+        t_analysis_formatted=t_analysis_formatted,
+        dataset_id=dataset_id,
     )
 
     fn_local = f"{dataset_id}.zarr"
