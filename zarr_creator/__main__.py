@@ -6,11 +6,17 @@ import sys
 from pathlib import Path
 
 import isodate
+import numpy as np
 import xarray as xr
 from loguru import logger
 
 from . import __version__
-from .config import DATA_COLLECTION
+from .config_dini import DATA_COLLECTION as DINI_DATA_COLLECTION
+from .config_dini import PROJECTION_IDENTIFIER as DINI_PROJECTION_IDENTIFIER
+from .config_dini import PROJECTION_WKT as DINI_PROJECTION_WKT
+from .config_ig import DATA_COLLECTION as IG_DATA_COLLECTION
+from .config_ig import PROJECTION_IDENTIFIER as IG_PROJECTION_IDENTIFIER
+from .config_ig import PROJECTION_WKT as IG_PROJECTION_WKT
 from .grib_definitions import set_local_eccodes_definitions_path
 from .read_source import read_level_type_data
 from .write_zarr import write_output_zarrs
@@ -18,7 +24,7 @@ from .write_zarr import write_output_zarrs
 DEFAULT_ANALYSIS_TIME = "2025-02-17T01:00:00Z"
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
-LOCAL_COPY_STORAGE_PATH = Path("/tmp/dini-recent")
+LOCAL_COPY_STORAGE_PATH = Path("/tmp/{suite_name}-recent")
 
 set_local_eccodes_definitions_path()
 
@@ -48,8 +54,15 @@ def _setup_argparse():
         action="store_true",
         help=(
             "If provided, skip uploading zarr outputs to the S3 bucket. "
-            "A local copy is still written to /tmp/dini-recent."
+            "A local copy is still written to /tmp/{suite-name}-recent."
         ),
+    )
+
+    argparser.add_argument(
+        "--suite-name",
+        help="The suite with corresponding config file to use (e.g. 'ig', 'dini', etc.)",
+        choices=["ig", "dini"],
+        required=True,
     )
 
     return argparser
@@ -66,8 +79,21 @@ def cli(argv=None):
     logger.remove()
     logger.add(sys.stderr, level=args.log_level.upper())
 
+    if args.suite_name == "ig":
+        data_collection = IG_DATA_COLLECTION
+        projection_identifier = IG_PROJECTION_IDENTIFIER
+        projection_wkt = IG_PROJECTION_WKT
+    elif args.suite_name == "dini":
+        data_collection = DINI_DATA_COLLECTION
+        projection_identifier = DINI_PROJECTION_IDENTIFIER
+        projection_wkt = DINI_PROJECTION_WKT
+    else:
+        raise ValueError(f"Unsupported suite name: {args.suite_name}")
+
+    local_copy_path = LOCAL_COPY_STORAGE_PATH.format(suite_name=args.suite_name)
+
     parts = {}
-    for part_id, part_details in DATA_COLLECTION.items():
+    for part_id, part_details in data_collection.items():
         ds_part = xr.Dataset()
         for level_details in part_details:
             level_type = level_details["level_type"]
@@ -75,7 +101,10 @@ def cli(argv=None):
             level_name_mapping = level_details.get("level_name_mapping", None)
 
             ds_level_type = read_level_type_data(
-                t_analysis=args.t_analysis, level_type=level_type
+                t_analysis=args.t_analysis,
+                level_type=level_type,
+                projection_identifier=projection_identifier,
+                projection_wkt=projection_wkt,
             )
 
             for var_name, levels in variables.items():
@@ -133,10 +162,11 @@ def cli(argv=None):
         parts[part_id] = ds_part
 
     for part_id, ds_part in parts.items():
-        rechunk_to = dict(time=1, x=ds_part.x.size // 2, y=ds_part.y.size // 2)
-        # check that with the chunking provided that the arrays exactly fit into the chunks
-        for dim in rechunk_to:
-            assert ds_part[dim].size % rechunk_to[dim] == 0
+        rechunk_to = dict(
+            time=1,
+            x=int(np.ceil(ds_part.x.size / 2)),
+            y=int(np.ceil(ds_part.y.size / 2)),
+        )
 
         # set zarr-creator version
         ds_part.attrs["zarr_creator_version"] = __version__
@@ -155,8 +185,9 @@ def cli(argv=None):
             dataset_id=part_id,
             rechunk_to=rechunk_to,
             t_analysis=args.t_analysis,
+            suite_name=args.suite_name,
             skip_s3_bucket_upload=args.skip_s3_bucket_upload,
-            local_copy_path=LOCAL_COPY_STORAGE_PATH,
+            local_copy_path=local_copy_path,
         )
 
 

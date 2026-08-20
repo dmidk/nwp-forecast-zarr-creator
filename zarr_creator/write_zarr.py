@@ -11,7 +11,7 @@ from loguru import logger
 
 BUCKET_NAME = "harmonie-zarr"
 BUCKET_REGION = "eu-central-1"
-OUTPUT_PREFIX_FORMAT = "dini/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
+OUTPUT_PREFIX_FORMAT = "{suite_name}/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
 
 
 def write_output_zarrs(
@@ -20,6 +20,7 @@ def write_output_zarrs(
     rechunk_to: dict,
     member: str,
     t_analysis: datetime.datetime,
+    suite_name: str,
     skip_s3_bucket_upload: bool = False,
     local_copy_path: str = None,
 ):
@@ -42,6 +43,8 @@ def write_output_zarrs(
         The forecast member name, e.g. "control"
     t_analysis : datetime.datetime
         The analysis time of the forecast.
+    suite_name : str
+        The name of the forecast suite, e.g. "dini" or "ig"
     skip_s3_bucket_upload : bool, optional
         If True, skip uploading the output zarr dataset to S3.
     local_copy_path : str, optional
@@ -76,7 +79,10 @@ def write_output_zarrs(
 
     t_analysis_formatted = t_analysis.isoformat().replace(":", "").replace("+0000", "Z")
     prefix = OUTPUT_PREFIX_FORMAT.format(
-        member=member, t_analysis_formatted=t_analysis_formatted, dataset_id=dataset_id
+        suite_name=suite_name,
+        member=member,
+        t_analysis_formatted=t_analysis_formatted,
+        dataset_id=dataset_id,
     )
 
     fn_local = f"{dataset_id}.zarr"
