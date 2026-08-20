@@ -6,7 +6,7 @@ from collections import OrderedDict
 from .transforms import derive_orography_from_geopotential
 
 PROJECTION_IDENTIFIER = "ig_projection"
-# Note this WKT string gives consistent 0.2 meter difference in y coordinate wrt the GRIB data when transforming lat/lon to x/y 
+# Note this WKT string gives consistent 0.2 meter difference in y coordinate wrt the GRIB data when transforming lat/lon to x/y
 PROJECTION_WKT = """
 PROJCRS["DMI HARMONIE IG lambert projection",
     BASEGEOGCRS["DMI HARMONIE IG lambert CRS",
