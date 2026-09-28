@@ -63,6 +63,15 @@ def _file_bar(desc: str):
     )
 
 
+def s3_verify_ssl() -> bool:
+    """Whether to verify S3 TLS certificates (env: ``S3_VERIFY_SSL``).
+
+    Defaults to true; set ``S3_VERIFY_SSL=0`` for endpoints whose CA is not
+    in the container's trust store (like ``aws s3 --no-verify-ssl``).
+    """
+    return os.environ.get("S3_VERIFY_SSL", "").lower() not in {"0", "false", "no"}
+
+
 def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
     """Resolve ``(filesystem, path)`` for any URL via fsspec.
 
@@ -73,6 +82,8 @@ def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
         kwargs: dict = {"anon": anon}
         if profile is not None:
             kwargs["profile"] = profile
+        if not s3_verify_ssl():
+            kwargs["client_kwargs"] = {"verify": False}
         return fsspec.url_to_fs(url, **kwargs)
     return fsspec.url_to_fs(url)
 

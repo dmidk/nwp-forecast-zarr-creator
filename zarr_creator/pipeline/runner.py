@@ -247,6 +247,8 @@ def main(argv=None) -> None:
             f"S3 source auth: "
             f"{describe_source_auth(settings.src_anon, settings.src_aws_profile)}"
         )
+    if not storage.s3_verify_ssl():
+        logger.warning("S3_VERIFY_SSL is off: S3 TLS certificates are not verified")
 
     if args.watch:
         watch_loop(
