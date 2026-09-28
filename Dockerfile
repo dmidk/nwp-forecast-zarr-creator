@@ -19,8 +19,13 @@ RUN uv sync
 # Check that version is set correctly from git (i.e. not the default "0.0.0")
 RUN uv run python -c "import zarr_creator; assert zarr_creator.__version__ != '0.0.0'"
 
+# Run the venv's python directly rather than `uv run`: uv re-checks the
+# project on startup and may try to rebuild it, fetching the build backend
+# from PyPI, which fails where there is no internet access (e.g. Matrix).
+ENV PATH="/app/.venv/bin:$PATH"
+
 # --watch is the default argument (not part of the entrypoint) so that passing
 # arguments, e.g. `--t-analysis 2025-02-27T15:00:00Z`, runs a single analysis
 # time and exits instead of watching.
-ENTRYPOINT ["uv", "run", "python", "-m", "zarr_creator", "run"]
+ENTRYPOINT ["/app/.venv/bin/python", "-m", "zarr_creator", "run"]
 CMD ["--watch"]
