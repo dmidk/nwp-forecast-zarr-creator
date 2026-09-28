@@ -21,11 +21,10 @@ from .. import storage
 from ..settings import (
     LATEST,
     Settings,
-    compute_analysis_time,
     describe_source_auth,
     refs_dir_for,
     require_utc,
-    resolve_t_analysis,
+    resolve_t_analysis_for_suite,
 )
 from .cli_args import (
     T_ANALYSIS_HELP,
@@ -77,7 +76,21 @@ def _run_conversion(t_analysis: datetime.datetime, settings: Settings) -> None:
     from ..__main__ import cli as convert
 
     t_str = require_utc(t_analysis).isoformat()
-    convert(["--t_analysis", t_str, "--suite-name", settings.suite_name])
+    argv = [
+        "--t_analysis",
+        t_str,
+        "--suite-name",
+        settings.suite_name,
+        "--refs-root-path",
+        settings.refs_root_path,
+        "--member-id",
+        settings.member_id,
+        "--dst-zarr-output-path",
+        settings.dst_zarr_output_path,
+    ]
+    if settings.dst_aws_profile:
+        argv += ["--dest-profile", settings.dst_aws_profile]
+    convert(argv)
 
 
 def process_one(
@@ -133,9 +146,7 @@ def poll_once(
     **process_kwargs,
 ) -> float:
     """Run a single watch iteration; return seconds to sleep next."""
-    t_analysis = compute_analysis_time(
-        now or datetime.datetime.now(datetime.timezone.utc)
-    )
+    t_analysis = resolve_t_analysis_for_suite(LATEST, settings.suite_name, now=now)
     if refs_done(t_analysis, settings):
         logger.info(
             f"Analysis time {t_analysis.isoformat()} is already processed "
@@ -260,7 +271,7 @@ def main(argv=None) -> None:
         return
 
     process_one(
-        args.t_analysis or resolve_t_analysis(LATEST),
+        resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name),
         settings,
         max_retries=args.max_retries,
         retry_interval=args.retry_interval,

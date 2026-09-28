@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ifs` suite: converts ECMWF IFS control forecasts from DMI's ECMWF cache
+  (`dei_dj_ifs-ens-cf_od_oper_fc_*`, GRIB1/2 0.1° lat/lon) into one `ifs.zarr`
+  per cycle in the layout of the ANNA boundary datastore. It uses ERA5 names,
+  dims `time`/`prediction_timedelta`/`level`/`latitude`/`longitude`, and is
+  regridded to 0.25°. The feed has no specific humidity and no 600 hPa, so
+  `q` is derived from `r` and `t`, and 600 hPa is interpolated in ln(p)
+  between 500 and 700 hPa. Each suite now has its own file names, gribscan
+  magician, cycle interval, delivery lag and `MAX_HOUR`/`MEMBER_ID` defaults
+  (`zarr_creator/suites.py`).
+
 ### Changed
+
+- `--t-analysis latest` resolves using the suite's cycle interval and lag,
+  after the suite is known.
+- Refs are assembled in-process via `gribscan.grib_magic` instead of the
+  `gribscan-build` CLI, so suites can use their own magician.
+- `python -m zarr_creator run` now passes its refs root, member id, output
+  path and destination profile on to the conversion step. Before, the
+  conversion re-read these from the environment and ignored the
+  corresponding CLI flags.
 
 - Python-only orchestration: `run.sh`, `build_indexes_and_refs.sh`,
   `script_defaults.sh`, and `scripts/download_harmonie_data.sh` are removed,

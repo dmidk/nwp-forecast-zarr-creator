@@ -55,6 +55,23 @@ class Settings:
     src_anon: bool = False
     # Raw env snapshot for provenance/debugging (no secrets stored here).
     _from_alias: bool = field(default=False, repr=False)
+    # Whether max_hour/member_id are the suite's defaults (not set via env or
+    # flag), so that switching suite also switches them.
+    _max_hour_is_default: bool = field(default=False, repr=False)
+    _member_id_is_default: bool = field(default=False, repr=False)
+
+
+def set_suite(settings: Settings, suite_name: str) -> Settings:
+    """Switch suite (in place), applying its defaults for unset options."""
+    from .suites import get_suite
+
+    suite = get_suite(suite_name)
+    settings.suite_name = suite_name
+    if settings._max_hour_is_default:
+        settings.max_hour = suite.default_max_hour
+    if settings._member_id_is_default:
+        settings.member_id = suite.default_member_id
+    return settings
 
 
 def _resolve_src_root() -> tuple[str, bool]:
@@ -85,12 +102,12 @@ def load_settings() -> Settings:
     if max_hour < 0:
         raise ValueError(f"MAX_HOUR must be >= 0, got: {max_hour}")
 
-    return Settings(
+    settings = Settings(
         src_grib_root_uri=src_root,
         refs_root_path=_getenv("REFS_ROOT_PATH", DEFAULT_REFS_ROOT_PATH),  # type: ignore[arg-type]
         member_id=_getenv("MEMBER_ID", DEFAULT_MEMBER_ID),  # type: ignore[arg-type]
         max_hour=max_hour,
-        suite_name=_getenv("SUITE_NAME", DEFAULT_SUITE_NAME),  # type: ignore[arg-type]
+        suite_name=DEFAULT_SUITE_NAME,
         src_grib_temp_path=os.environ.get("SRC_GRIB_TEMP_PATH") or None,
         dst_zarr_output_path=_getenv(  # type: ignore[arg-type]
             "DST_ZARR_OUTPUT_PATH", DEFAULT_DST_ZARR_OUTPUT_PATH
@@ -103,7 +120,10 @@ def load_settings() -> Settings:
         or None,
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
         _from_alias=from_alias,
+        _max_hour_is_default=_getenv("MAX_HOUR") is None,
+        _member_id_is_default=_getenv("MEMBER_ID") is None,
     )
+    return set_suite(settings, _getenv("SUITE_NAME", DEFAULT_SUITE_NAME))  # type: ignore[arg-type]
 
 
 def source_profile(settings: Settings, explicit: str | None = None) -> str | None:
@@ -138,42 +158,74 @@ def require_utc(t_analysis: datetime.datetime) -> datetime.datetime:
     return t_analysis.astimezone(datetime.timezone.utc)
 
 
-ANALYSIS_INTERVAL_SECONDS = 3 * 3600
+DEFAULT_ANALYSIS_INTERVAL_HOURS = 3
 DEFAULT_LAG_HOURS = 2
 # Sentinel for "the most recent analysis time that should be available".
 LATEST = "latest"
 
 
 def compute_analysis_time(
-    now: datetime.datetime, lag_hours: float = DEFAULT_LAG_HOURS
+    now: datetime.datetime,
+    lag_hours: float = DEFAULT_LAG_HOURS,
+    interval_hours: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
 ) -> datetime.datetime:
-    """Most recent 3-hourly analysis time, allowing ``lag_hours`` for delivery.
+    """Most recent analysis time, allowing ``lag_hours`` for delivery.
 
-    Subtracts the lag from ``now`` and floors to the 3-hour grid, e.g. at
-    05:00 UTC with a 2h lag the result is 03:00 UTC.
+    Subtracts the lag from ``now`` and floors to the ``interval_hours`` grid,
+    e.g. at 05:00 UTC with a 2h lag and 3h interval the result is 03:00 UTC.
     """
     if now.tzinfo is None:
         now = now.replace(tzinfo=datetime.timezone.utc)
     adjusted = now - datetime.timedelta(hours=lag_hours)
     epoch = int(adjusted.timestamp())
-    rounded = epoch // ANALYSIS_INTERVAL_SECONDS * ANALYSIS_INTERVAL_SECONDS
+    interval_seconds = interval_hours * 3600
+    rounded = epoch // interval_seconds * interval_seconds
     return datetime.datetime.fromtimestamp(rounded, tz=datetime.timezone.utc)
 
 
+def is_latest(value) -> bool:
+    return value is None or (isinstance(value, str) and value.strip().lower() == LATEST)
+
+
 def resolve_t_analysis(
-    value: str | None, now: datetime.datetime | None = None
+    value: str | datetime.datetime | None,
+    now: datetime.datetime | None = None,
+    lag_hours: float = DEFAULT_LAG_HOURS,
+    interval_hours: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
 ) -> datetime.datetime:
     """Turn a ``--t-analysis`` value into a UTC datetime.
 
     ``None`` or ``"latest"`` means the most recent analysis time (see
-    :func:`compute_analysis_time`); anything else is an ISO8601 string with a
-    timezone, e.g. ``2025-03-02T00:00:00Z``.
+    :func:`compute_analysis_time`); a datetime is validated and passed
+    through; anything else is an ISO8601 string with a timezone, e.g.
+    ``2025-03-02T00:00:00Z``.
     """
-    if value is None or value.strip().lower() == LATEST:
+    if is_latest(value):
         return compute_analysis_time(
-            now or datetime.datetime.now(datetime.timezone.utc)
+            now or datetime.datetime.now(datetime.timezone.utc),
+            lag_hours=lag_hours,
+            interval_hours=interval_hours,
         )
+    if isinstance(value, datetime.datetime):
+        return require_utc(value)
     return require_utc(isodate.parse_datetime(value))
+
+
+def resolve_t_analysis_for_suite(
+    value: str | datetime.datetime | None,
+    suite_name: str,
+    now: datetime.datetime | None = None,
+) -> datetime.datetime:
+    """:func:`resolve_t_analysis` using the suite's cycle interval and lag."""
+    from .suites import get_suite
+
+    suite = get_suite(suite_name)
+    return resolve_t_analysis(
+        value,
+        now=now,
+        lag_hours=suite.lag_hours,
+        interval_hours=suite.analysis_interval_hours,
+    )
 
 
 def analysis_time_str(t_analysis: datetime.datetime) -> str:

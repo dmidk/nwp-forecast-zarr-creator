@@ -72,12 +72,12 @@ def test_indexes_in_place_no_staging(tmp_path, monkeypatch):
     monkeypatch.setattr(
         index_refs,
         "_run_index",
-        lambda inputs, nprocs=2: calls.append(("index", inputs)),
+        lambda inputs, nprocs=2, outdir=None: calls.append(("index", inputs)),
     )
     monkeypatch.setattr(
         index_refs,
         "_run_build_refs",
-        lambda indexes, refs_dir, prefix: calls.append(
+        lambda indexes, refs_dir, prefix, magician: calls.append(
             ("build", indexes, refs_dir, prefix)
         ),
     )
@@ -118,7 +118,9 @@ def test_staging_used_when_set(tmp_path, monkeypatch):
         return tmpdir
 
     monkeypatch.setattr(index_refs.storage, "download_to_temp", fake_stage)
-    monkeypatch.setattr(index_refs, "_run_index", lambda inputs, nprocs=2: None)
+    monkeypatch.setattr(
+        index_refs, "_run_index", lambda inputs, nprocs=2, outdir=None: None
+    )
     monkeypatch.setattr(index_refs, "_run_build_refs", lambda *a, **k: None)
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
     # local file:// URLs: storage.join on a plain path returns plain path
@@ -135,7 +137,9 @@ def test_s3_no_temp_warns_and_attempts(monkeypatch):
     )
     indexed = []
     monkeypatch.setattr(
-        index_refs, "_run_index", lambda inputs, nprocs=2: indexed.extend(inputs)
+        index_refs,
+        "_run_index",
+        lambda inputs, nprocs=2, outdir=None: indexed.extend(inputs),
     )
     monkeypatch.setattr(index_refs, "_run_build_refs", lambda *a, **k: None)
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
@@ -157,8 +161,11 @@ def test_t_analysis_cli_arg_default_and_errors():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--t-analysis", type=t_analysis_arg, default=s.LATEST)
-    # default is resolved to a real UTC datetime on the 3-hour grid
-    t = parser.parse_args([]).t_analysis
+    # "latest" is kept as a sentinel (it depends on the suite) and resolves to
+    # a real UTC datetime on the suite's cycle grid
+    assert parser.parse_args([]).t_analysis == s.LATEST
+    assert parser.parse_args(["--t-analysis", "LATEST"]).t_analysis == s.LATEST
+    t = s.resolve_t_analysis_for_suite(parser.parse_args([]).t_analysis, "dini")
     assert t.tzinfo is not None and t.hour % 3 == 0 and t.minute == 0
     assert parser.parse_args(["--t-analysis", "2025-03-02T06:00:00Z"]).t_analysis == (
         s.resolve_t_analysis("2025-03-02T06:00:00Z")

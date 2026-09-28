@@ -63,12 +63,52 @@ temporary location before indexing (recommended for S3 sources), set
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the configured output:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name DINI
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name dini
 ```
 
-`suite-name` can optionally be set to `DINI` (default) or `IG`.
+`suite-name` can be set to `dini` (default), `ig` or `ifs` (see below).
 Output destinations come from `DST_ZARR_OUTPUT_PATH` (default:
 `file:///tmp/{suite_name}-recent/{dataset_id}.zarr`, i.e. local only).
+
+### IFS (boundary input for ANNA)
+
+The `ifs` suite converts ECMWF IFS control forecasts (formerly HRES) as
+delivered to DMI's ECMWF cache on Scale (`/dmidata/cache/mdcprd/gdb/ecmwf/`,
+files `dei_dj_ifs-ens-cf_od_oper_fc_<base>_<valid>_<step>h`, one per cycle
+and step, 0.1° lat/lon). It writes a single `ifs.zarr` per cycle, laid out as
+the ANNA boundary datastore expects (see the contract in
+`mlwm-deployment/configurations/ANNA/configs/ifs_7deg_model1_config.yaml`):
+
+- ERA5/WeatherBench2 variable names
+- dims `time` (analysis time), `prediction_timedelta`, `level` (hPa),
+  `latitude` and `longitude`
+- regridded linearly to 0.25° over lat 40.25–71.75, lon −19.5–32.0
+
+The suite changes some defaults:
+
+- cycles are 6-hourly with a 7h delivery lag for `--t-analysis latest`
+- `MAX_HOUR` defaults to 72, and steps go every 3h
+- `MEMBER_ID` defaults to `control`
+- the `.index` files are written to the refs directory, not next to the
+  source files, since the ECMWF cache is shared
+
+```bash
+uv run python -m zarr_creator run --suite-name ifs \
+    --src-grib-root-uri /dmidata/cache/mdcprd/gdb/ecmwf \
+    --t-analysis 2026-09-28T00:00:00Z \
+    --dst-zarr-output-path 'file:///tmp/{suite_name}/{t_analysis}/{dataset_id}.zarr'
+```
+
+The variable mapping (IFS shortName → output name) is in
+`zarr_creator/config_ifs.py`. Three pressure-level fields aren't delivered
+as ANNA needs them, so they are derived:
+
+- `geopotential` = geopotential height `gh` × 9.80665 (exact)
+- `specific_humidity` comes from relative humidity `r` and temperature `t`,
+  using the IFS's mixed-phase saturation vapour pressure. That inverts how
+  the IFS defines `r`, so it's close to exact.
+- 600 hPa isn't delivered, so all variables there are interpolated linearly
+  in ln(p) between 500 and 700 hPa. This is an approximation.
 
 ## Runtime Defaults
 
@@ -90,9 +130,9 @@ before running, or by passing the corresponding CLI flag (e.g.
 | `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written (always local). Once an analysis time has been converted its refs are deleted, leaving only a `.done` marker so it is not processed again (pass `--no-cleanup` to keep them). |
 | `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are staged here before indexing. If unset, files are indexed in place from `SRC_GRIB_ROOT_URI` (S3 sources without a staging path log a warning). |
 | `DST_ZARR_OUTPUT_PATH` | `file:///tmp/{suite_name}-recent/{dataset_id}.zarr` | `s3://harmonie-zarr/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr` | Full output-path format string (`{suite_name}`, `{member}`, `{t_analysis}`, `{dataset_id}`), written via fsspec (local path or `s3://`). Must contain `{dataset_id}`; without `{t_analysis}` each run overwrites the previous output. |
-| `MEMBER_ID` | `CONTROL__dmi` | *as built-in default* | Forecast member identifier in file names. |
-| `MAX_HOUR` | `36` | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`). |
-| `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. |
+| `MEMBER_ID` | `CONTROL__dmi` (`control` for `ifs`) | *as built-in default* | Forecast member identifier in file names (IFS file names have none; it's only used in the refs path). |
+| `MAX_HOUR` | `36` (`72` for `ifs`) | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`; every 3h for `ifs`). |
+| `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `dini`, `ig` and `ifs`. |
 | `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
 | `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
 

@@ -6,7 +6,7 @@ import os
 import pytest
 
 from zarr_creator.pipeline import runner
-from zarr_creator.settings import Settings
+from zarr_creator.settings import Settings, compute_analysis_time
 
 
 def _utc(*args):
@@ -31,15 +31,15 @@ def _settings(**overrides):
 
 def test_compute_analysis_time_boundaries():
     # 05:00 UTC, lag 2h -> adjusted 03:00 -> floor 03:00
-    assert runner.compute_analysis_time(_utc(2025, 3, 2, 5)) == _utc(2025, 3, 2, 3)
+    assert compute_analysis_time(_utc(2025, 3, 2, 5)) == _utc(2025, 3, 2, 3)
     # exactly on interval: 08:00 - 2h = 06:00 -> 06:00
-    assert runner.compute_analysis_time(_utc(2025, 3, 2, 8)) == _utc(2025, 3, 2, 6)
+    assert compute_analysis_time(_utc(2025, 3, 2, 8)) == _utc(2025, 3, 2, 6)
     # just after interval: 08:01 - 2h = 06:01 -> 06:00
-    assert runner.compute_analysis_time(_utc(2025, 3, 2, 8, 1)) == _utc(2025, 3, 2, 6)
+    assert compute_analysis_time(_utc(2025, 3, 2, 8, 1)) == _utc(2025, 3, 2, 6)
     # midnight wrap: 01:00 - 2h = 23:00 prev day -> 21:00
-    assert runner.compute_analysis_time(_utc(2025, 3, 2, 1)) == _utc(2025, 3, 1, 21)
+    assert compute_analysis_time(_utc(2025, 3, 2, 1)) == _utc(2025, 3, 1, 21)
     # naive datetimes treated as UTC
-    assert runner.compute_analysis_time(datetime.datetime(2025, 3, 2, 5)) == _utc(
+    assert compute_analysis_time(datetime.datetime(2025, 3, 2, 5)) == _utc(
         2025, 3, 2, 3
     )
 

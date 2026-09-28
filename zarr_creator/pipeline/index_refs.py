@@ -1,20 +1,23 @@
 """Build GRIB indexes and gribscan refs (port of ``build_indexes_and_refs.sh``).
 
-Flow per analysis time, for each of the ``sf``/``pl`` file types:
+Flow per analysis time, for each file group of the suite (``sf``/``pl`` for
+HARMONIE, see ``zarr_creator.suites``):
 
-1. Enumerate expected files ``fc<YYYYMMDDHH>+<HHH><member>_<type>`` for
-   ``0..MAX_HOUR`` and verify completeness (replaces the ``test -f`` loop).
+1. Enumerate the expected files for ``0..MAX_HOUR`` (e.g.
+   ``fc<YYYYMMDDHH>+<HHH><member>_<type>`` for HARMONIE) and verify
+   completeness (replaces the ``test -f`` loop).
 2. If ``SRC_GRIB_TEMP_PATH`` is set, download/copy files there first and
    index the staged copy (replaces ``rsync``); otherwise index in place.
    S3 sources without a temp path log a warning — direct S3 reads by
    gribscan/eccodes are unverified — and are attempted in place anyway.
 3. Run ``gribscan-index`` in-process (with the local DMI eccodes
-   definitions path set) and ``gribscan-build`` with
-   ``--prefix <src>/ -m harmonie``.
+   definitions path set), then assemble the refs with the suite's gribscan
+   magician (what ``gribscan-build --prefix <src>/ -m <magician>`` does).
 """
 
 import argparse
 import datetime
+import json
 import os
 
 from loguru import logger
@@ -22,15 +25,15 @@ from loguru import logger
 from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
 from ..settings import (
-    FILE_TYPES,
     LATEST,
     Settings,
     describe_source_auth,
-    expected_grib_filenames,
     refs_dir_for,
     require_utc,
+    resolve_t_analysis_for_suite,
     source_profile,
 )
+from ..suites import get_suite
 from .cli_args import (
     T_ANALYSIS_HELP,
     add_settings_arguments,
@@ -43,23 +46,29 @@ def _is_s3_uri(uri: str) -> bool:
     return uri.startswith("s3://")
 
 
-def _run_index(inputs: list[str], nprocs: int = 2) -> None:
+def _run_index(inputs: list[str], nprocs: int = 2, outdir: str | None = None) -> None:
     import gribscan.tools
 
     # -f: always rebuild; the staging dir may be a warm cache containing
     # indexes from a previous run (same fixture content, but rebuild anyway).
-    gribscan.tools.create_index.main(
-        [*inputs, "-n", str(nprocs), "-f"], standalone_mode=False
-    )
+    args = [*inputs, "-n", str(nprocs), "-f"]
+    if outdir is not None:
+        args += ["-o", outdir]
+    gribscan.tools.create_index.main(args, standalone_mode=False)
 
 
-def _run_build_refs(index_files: list[str], refs_dir: str, prefix: str) -> None:
-    import gribscan.tools
+def _run_build_refs(
+    index_files: list[str], refs_dir: str, prefix: str, magician
+) -> None:
+    import gribscan
 
-    gribscan.tools.build_dataset.main(
-        [*index_files, "-o", refs_dir, "--prefix", prefix, "-m", "harmonie"],
-        standalone_mode=False,
-    )
+    # In-process equivalent of `gribscan-build`, whose `-m` choice only
+    # accepts gribscan's built-in magicians.
+    refs = gribscan.grib_magic(index_files, magician=magician, global_prefix=prefix)
+    os.makedirs(refs_dir, exist_ok=True)
+    for dataset, ref in refs.items():
+        with open(os.path.join(refs_dir, f"{dataset}.json"), "w") as f:
+            json.dump(ref, f, indent=2)
 
 
 def _download_with_hint(urls, settings, profile, anon) -> str:
@@ -82,15 +91,17 @@ def build_indexes_and_refs(
 ) -> str:
     """Build indexes and refs for one analysis time; return the refs dir."""
     t_analysis = require_utc(t_analysis)
+    suite = get_suite(settings.suite_name)
     profile = source_profile(settings)
     anon = settings.src_anon
 
     if _is_s3_uri(settings.src_grib_root_uri):
         logger.info(f"S3 source auth: {describe_source_auth(anon, profile)}")
 
-    filenames = expected_grib_filenames(
+    file_groups = suite.grib_file_groups(
         t_analysis, settings.max_hour, settings.member_id
     )
+    filenames = [name for names in file_groups.values() for name in names]
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
     try:
         missing = storage.find_missing(urls, profile, anon)
@@ -129,22 +140,30 @@ def build_indexes_and_refs(
 
     set_local_eccodes_definitions_path()
 
-    by_type: dict[str, list[str]] = {ft: [] for ft in FILE_TYPES}
-    for name in filenames:
-        file_type = name.rsplit("_", 1)[-1]
-        by_type[file_type].append(name)
+    if suite.index_next_to_source:
+        index_dir = None
+    else:
+        index_dir = os.path.join(refs_dir, "index")
+        os.makedirs(index_dir, exist_ok=True)
 
-    for file_type in FILE_TYPES:
-        names = by_type[file_type]
+    for group, names in file_groups.items():
         if _is_s3_uri(src_dir):
             inputs = [storage.join(src_dir, name) for name in names]
         else:
             inputs = [os.path.join(src_dir, name) for name in names]
-        logger.info(f"Indexing {file_type} files ({len(inputs)} files)")
-        _run_index(inputs)
-        index_files = [f"{path}.index" for path in inputs]
-        logger.info(f"Building refs for {file_type} files")
-        _run_build_refs(index_files, refs_dir, prefix=src_dir.rstrip("/") + "/")
+        logger.info(f"Indexing {group} files ({len(inputs)} files)")
+        _run_index(inputs, outdir=index_dir)
+        if index_dir is None:
+            index_files = [f"{path}.index" for path in inputs]
+        else:
+            index_files = [os.path.join(index_dir, f"{name}.index") for name in names]
+        logger.info(f"Building refs for {group} files")
+        _run_build_refs(
+            index_files,
+            refs_dir,
+            prefix=src_dir.rstrip("/") + "/",
+            magician=suite.make_magician(),
+        )
 
     return refs_dir
 
@@ -161,7 +180,8 @@ def main(argv=None) -> str:
     add_settings_arguments(parser)
     args = parser.parse_args(argv)
     settings = settings_from_args(args)
-    return build_indexes_and_refs(args.t_analysis, settings)
+    t_analysis = resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name)
+    return build_indexes_and_refs(t_analysis, settings)
 
 
 if __name__ == "__main__":

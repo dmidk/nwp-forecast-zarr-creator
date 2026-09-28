@@ -4,17 +4,10 @@ import argparse
 import datetime
 import sys
 
-import numpy as np
 import xarray as xr
 from loguru import logger
 
 from . import __version__
-from .config_dini import DATA_COLLECTION as DINI_DATA_COLLECTION
-from .config_dini import PROJECTION_IDENTIFIER as DINI_PROJECTION_IDENTIFIER
-from .config_dini import PROJECTION_WKT as DINI_PROJECTION_WKT
-from .config_ig import DATA_COLLECTION as IG_DATA_COLLECTION
-from .config_ig import PROJECTION_IDENTIFIER as IG_PROJECTION_IDENTIFIER
-from .config_ig import PROJECTION_WKT as IG_PROJECTION_WKT
 from .grib_definitions import set_local_eccodes_definitions_path
 from .pipeline.cli_args import T_ANALYSIS_HELP, t_analysis_arg
 from .read_source import read_level_type_data
@@ -25,7 +18,10 @@ from .settings import (
     LATEST,
     dest_profile,
     format_output_path,
+    resolve_t_analysis_for_suite,
+    set_suite,
 )
+from .suites import SUITE_NAMES, get_suite
 from .write_zarr import write_output_zarrs
 
 
@@ -42,6 +38,31 @@ DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
 
 set_local_eccodes_definitions_path()
+
+
+def _rename_level_dim(
+    ds: xr.Dataset, level_types: set[str], level_dim_names: dict[str, str]
+) -> xr.Dataset:
+    """Rename the ``level`` dim after the level types it came from.
+
+    Level types without a mapping (e.g. ``entireAtmosphere`` fields that share
+    the dim) don't take part, but at least one level type must be mapped and
+    all mapped ones must agree.
+    """
+    names = {level_dim_names[lt] for lt in level_types if lt in level_dim_names}
+    if not names:
+        raise NotImplementedError(
+            f"Level type(s) {sorted(level_types)} not implemented"
+        )
+    if len(names) > 1:
+        raise ValueError(
+            f"Level types {sorted(level_types)} map to different level dims "
+            f"{sorted(names)} within one part"
+        )
+    (name,) = names
+    if name == "level":
+        return ds
+    return ds.rename({"level": name})
 
 
 def _setup_argparse():
@@ -69,8 +90,8 @@ def _setup_argparse():
 
     argparser.add_argument(
         "--suite-name",
-        help="The suite with corresponding config file to use (e.g. 'ig', 'dini', etc.)",
-        choices=["ig", "dini"],
+        help="The suite with corresponding config file to use",
+        choices=SUITE_NAMES,
         default="dini",
     )
 
@@ -87,7 +108,7 @@ def _setup_argparse():
         "--member-id",
         default=None,
         help="Ensemble member id in the GRIB file names "
-        f"(env: MEMBER_ID, default: {DEFAULT_MEMBER_ID})",
+        f"(env: MEMBER_ID, default: {DEFAULT_MEMBER_ID}, or 'control' for ifs)",
     )
     argparser.add_argument(
         "--dst-zarr-output-path",
@@ -134,7 +155,7 @@ def cli(argv=None):
 
     from .settings import load_settings
 
-    settings = load_settings()
+    settings = set_suite(load_settings(), args.suite_name)
     if args.refs_root_path is not None:
         settings.refs_root_path = args.refs_root_path
     if args.member_id is not None:
@@ -150,30 +171,24 @@ def cli(argv=None):
             "each run overwrites the previous output."
         )
 
-    if args.suite_name == "ig":
-        data_collection = IG_DATA_COLLECTION
-        projection_identifier = IG_PROJECTION_IDENTIFIER
-        projection_wkt = IG_PROJECTION_WKT
-    elif args.suite_name == "dini":
-        data_collection = DINI_DATA_COLLECTION
-        projection_identifier = DINI_PROJECTION_IDENTIFIER
-        projection_wkt = DINI_PROJECTION_WKT
-    else:
-        raise ValueError(f"Unsupported suite name: {args.suite_name}")
+    suite = get_suite(args.suite_name)
+    t_analysis = resolve_t_analysis_for_suite(args.t_analysis, suite.name)
 
     parts = {}
-    for part_id, part_details in data_collection.items():
+    for part_id, part_details in suite.data_collection.items():
         ds_part = xr.Dataset()
+        # level types of the variables that carry a `level` dim
+        level_types_with_level_dim = set()
         for level_details in part_details:
             level_type = level_details["level_type"]
             variables = level_details["variables"]
             level_name_mapping = level_details.get("level_name_mapping", None)
 
             ds_level_type = read_level_type_data(
-                t_analysis=args.t_analysis,
+                t_analysis=t_analysis,
                 level_type=level_type,
-                projection_identifier=projection_identifier,
-                projection_wkt=projection_wkt,
+                projection_identifier=suite.projection_identifier,
+                projection_wkt=suite.projection_wkt,
                 refs_root_path=settings.refs_root_path,
                 member_id=settings.member_id,
             )
@@ -182,6 +197,8 @@ def cli(argv=None):
                 if callable(levels):
                     da = levels(ds_level_type)
                     ds_part[var_name] = da
+                    if "level" in da.dims:
+                        level_types_with_level_dim.add(level_type)
                     if "grid_mapping" in da.attrs:
                         ds_part[da.attrs["grid_mapping"]] = ds_level_type[
                             da.attrs["grid_mapping"]
@@ -209,35 +226,28 @@ def cli(argv=None):
                         )
                         ds_part[new_name] = da_level
 
+                if "level" in da.dims:
+                    level_types_with_level_dim.add(level_type)
                 if "grid_mapping" in da.attrs:
                     ds_part[da.attrs["grid_mapping"]] = ds_level_type[
                         da.attrs["grid_mapping"]
                     ]
 
-        # use "altitude" and "pressure" as dimension names instead of "level"
+        # rename the "level" dim per the suite, e.g. to "altitude" or "pressure"
         if "level" in ds_part.dims:
-            if level_type == "isobaricInhPa":
-                ds_part = ds_part.rename({"level": "pressure"})
-            elif level_type == "heightAboveGround":
-                ds_part = ds_part.rename({"level": "altitude"})
-            elif level_type == "heightAboveSea":
-                ds_part = ds_part.rename({"level": "altitude"})
-            else:
-                raise NotImplementedError(f"Level type {level_type} not implemented")
+            ds_part = _rename_level_dim(
+                ds_part, level_types_with_level_dim, suite.level_dim_names
+            )
 
         # check if any of the coordinates don't have any variables, if so drop them
         for coord in ds_part.coords:
             if all(coord not in ds_part[v].coords for v in list(ds_part.data_vars)):
                 ds_part = ds_part.drop_vars(coord)
 
-        parts[part_id] = ds_part
+        parts[part_id] = suite.transform_part(ds_part, t_analysis)
 
     for part_id, ds_part in parts.items():
-        rechunk_to = dict(
-            time=1,
-            x=int(np.ceil(ds_part.x.size / 2)),
-            y=int(np.ceil(ds_part.y.size / 2)),
-        )
+        rechunk_to = suite.rechunk_to(ds_part)
 
         # set zarr-creator version
         ds_part.attrs["zarr_creator_version"] = __version__
@@ -256,7 +266,7 @@ def cli(argv=None):
                 settings.dst_zarr_output_path,
                 suite_name=args.suite_name,
                 member="control",
-                t_analysis=args.t_analysis,
+                t_analysis=t_analysis,
                 dataset_id=part_id,
             ),
             rechunk_to=rechunk_to,

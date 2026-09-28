@@ -69,7 +69,7 @@ def read_level_type_data(
             ] = "Accumulated surface net upward longwave flux"
             ds[var_name].attrs["units"] = "J m-2"
 
-    if level_type == "heightAboveGround":
+    if level_type == "heightAboveGround" and "lsm" in ds:
         # land-sea mask is given for each timestep even though it doesn't
         # change, let's remove the time dimension
         ds["lsm"] = ds.isel(time=0).lsm
@@ -77,10 +77,12 @@ def read_level_type_data(
     # add cf-complicant projection information
     _add_projection_info(ds, projection_identifier, projection_wkt)
 
-    # set cf-compliant standard_name for axes time, x and y
+    # set cf-compliant standard_name for axes time, x and y (lat/lon sources,
+    # e.g. IFS, get their lat/lon attrs from gribscan)
     ds.time.attrs["standard_name"] = "time"
-    ds.x.attrs["standard_name"] = "projection_x_coordinate"
-    ds.y.attrs["standard_name"] = "projection_y_coordinate"
+    if "x" in ds.coords and "y" in ds.coords:
+        ds.x.attrs["standard_name"] = "projection_x_coordinate"
+        ds.y.attrs["standard_name"] = "projection_y_coordinate"
 
     return ds
 
