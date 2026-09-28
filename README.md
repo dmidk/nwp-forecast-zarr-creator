@@ -30,13 +30,15 @@ For continuous operation run the pipeline watcher, e.g. in a tmux session
 uv run python -m zarr_creator run --watch
 ```
 
-This polls for the latest 3-hourly analysis time every 5 minutes, builds
+This polls for the latest analysis time every 5 minutes, builds
 indexes/refs when missing, and converts to zarr (retrying on failure).
 If not all source GRIB files for the analysis time have arrived yet, it logs
 a warning and tries again on the next poll instead of exiting.
 For a single analysis time (cron / Kubernetes Job), omit `--watch` and
 optionally pass `--t-analysis`, an ISO8601 time with a timezone or `latest`
-(the default: now minus 2 hours, floored to a 3-hour boundary). `--watch`
+(the default: now minus `ANALYSIS_LAG_HOURS`, floored to a multiple of
+`ANALYSIS_INTERVAL_HOURS`; with the defaults, now minus 2 hours floored to a
+3-hour boundary). `--watch`
 always follows the latest analysis time, so it cannot be combined with
 `--t-analysis`. A one-shot run exits non-zero (e.g. when source files
 are missing) so the scheduler can retry, and conversion failures retry
@@ -95,6 +97,9 @@ before running, or by passing the corresponding CLI flag (e.g.
 | `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. |
 | `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
 | `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
+| `S3_VERIFY_SSL` | _unset_ (verify) | _unset_ (verify) | Set to `0` to skip TLS certificate verification for all S3 reads and writes, like `aws s3 --no-verify-ssl` (e.g. for an endpoint signed by an internal CA). |
+| `ANALYSIS_INTERVAL_HOURS` | `3` | *as built-in default* | Hours between analysis times; `latest` and `--watch` floor to a multiple of this. Must divide 24 (e.g. `1` for hourly analyses). |
+| `ANALYSIS_LAG_HOURS` | `2` | *as built-in default* | Hours allowed for source data delivery; `latest` means now minus this, floored to the analysis interval. |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.

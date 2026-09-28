@@ -163,6 +163,44 @@ def test_resolve_t_analysis_latest_uses_now_with_lag():
     assert s.resolve_t_analysis(None, now=now) == expected
 
 
+def test_resolve_t_analysis_latest_hourly_interval(monkeypatch):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
+    now = datetime.datetime(2025, 3, 2, 5, 30, tzinfo=datetime.timezone.utc)
+    # 05:30 - 2h = 03:30 -> floored to the 03:00 analysis time
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 3, tzinfo=datetime.timezone.utc
+    )
+    now = datetime.datetime(2025, 3, 2, 6, 30, tzinfo=datetime.timezone.utc)
+    # 06:30 - 2h = 04:30 -> 04:00 (a 3h interval would give 03:00)
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 4, tzinfo=datetime.timezone.utc
+    )
+
+
+def test_resolve_t_analysis_latest_custom_lag(monkeypatch):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
+    monkeypatch.setenv("ANALYSIS_LAG_HOURS", "0.5")
+    now = datetime.datetime(2025, 3, 2, 6, 20, tzinfo=datetime.timezone.utc)
+    # 06:20 - 30min = 05:50 -> 05:00
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 5, tzinfo=datetime.timezone.utc
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "5", "-3", "hourly"])
+def test_analysis_interval_hours_rejects_invalid(monkeypatch, value):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", value)
+    with pytest.raises(ValueError, match="ANALYSIS_INTERVAL_HOURS"):
+        s.analysis_interval_hours()
+
+
+@pytest.mark.parametrize("value", ["-1", "two"])
+def test_analysis_lag_hours_rejects_invalid(monkeypatch, value):
+    monkeypatch.setenv("ANALYSIS_LAG_HOURS", value)
+    with pytest.raises(ValueError, match="ANALYSIS_LAG_HOURS"):
+        s.analysis_lag_hours()
+
+
 def test_resolve_t_analysis_explicit_and_naive():
     t = s.resolve_t_analysis("2025-03-02T06:00:00Z")
     assert t == datetime.datetime(2025, 3, 2, 6, tzinfo=datetime.timezone.utc)
