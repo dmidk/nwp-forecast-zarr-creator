@@ -1,0 +1,66 @@
+name: tests
+
+on:
+  push:
+    branches: "*"
+  pull_request:
+    branches: "*"
+
+env:
+  # Frozen fixture (immutable prefix) created with
+  # `python -m zarr_creator.create_test_fixture`. Analysis time, max hour and
+  # suite are read from the manifest.json next to it.
+  FIXTURE_SRC_URI: s3://uwcw-sample-grib2zarr-conversion-datasets/dini/2026-09-25T1500Z/ml
+
+jobs:
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install dependencies
+        run: uv sync --group dev
+      - name: Run unit tests
+        run: uv run pytest -m "not integration" -q
+
+  s3-e2e:
+    # Full pipeline against the frozen public fixture bucket (see
+    # FIXTURE_SRC_URI above).
+    name: s3 fixture e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore GRIB fixture cache
+        # The fixture prefix is immutable, so the URI alone is a safe key.
+        # A miss simply falls back to a full download; the pipeline skips
+        # files already present in the staging dir.
+        uses: actions/cache@v4
+        with:
+          path: .grib-cache
+          key: grib-fixture-v1-${{ env.FIXTURE_SRC_URI }}
+      - name: Set up Docker Buildx
+        # The default "docker" driver cannot export the GHA layer cache.
+        uses: docker/setup-buildx-action@v4
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: nwp-zarr-e2e:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run e2e in container (eccodes + DMI definitions included)
+        run: >
+          docker run --rm --entrypoint uv
+          -v "${{ github.workspace }}/.grib-cache:/grib-cache"
+          -v "${{ github.workspace }}/tests:/app/tests"
+          -e SRC_ANON=1
+          -e AWS_EC2_METADATA_DISABLED=true
+          -e SRC_GRIB_TEMP_PATH=/grib-cache
+          -e FIXTURE_SRC_URI="${{ env.FIXTURE_SRC_URI }}"
+          nwp-zarr-e2e:ci
+          run pytest tests/test_pipeline_s3.py -q

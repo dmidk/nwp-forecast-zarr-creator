@@ -1,20 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import datetime
-import os
 from pathlib import Path
 
 import isodate
 import xarray as xr
 from loguru import logger
-
-REFS_ROOT_PATH = os.getenv("REFS_ROOT_PATH")
-
-if REFS_ROOT_PATH is None:
-    raise ValueError(
-        "Environment variable REFS_ROOT_PATH must be set to the root path of "
-        "gribscan reference files (i.e. the .jsons files created by gribscan)"
-    )
 
 
 def read_level_type_data(
@@ -22,15 +13,25 @@ def read_level_type_data(
     level_type: str,
     projection_identifier: str,
     projection_wkt: str,
+    refs_root_path: str | None = None,
+    member_id: str | None = None,
 ) -> xr.Dataset:
+    if refs_root_path is None or member_id is None:
+        # Resolved lazily (not at import) so `--help` and unrelated
+        # commands work without the environment configured.
+        from .settings import load_settings
+
+        settings = load_settings()
+        if refs_root_path is None:
+            refs_root_path = settings.refs_root_path
+        if member_id is None:
+            member_id = settings.member_id
     if t_analysis.tzinfo is None:
         t_analysis = t_analysis.replace(tzinfo=datetime.timezone.utc)
     t_analysis_utc = t_analysis.astimezone(datetime.timezone.utc)
 
-    member_id = os.getenv("MEMBER_ID", "CONTROL__dmi")
-
     t_str = t_analysis_utc.strftime("%Y-%m-%dT%H%MZ")
-    fp = Path(REFS_ROOT_PATH) / member_id / f"{t_str}.jsons" / f"{level_type}.json"
+    fp = Path(refs_root_path) / member_id / f"{t_str}.jsons" / f"{level_type}.json"
 
     logger.info(f"Reading {t_analysis} {level_type} data from {fp}")
     ds = xr.open_zarr(f"reference::{str(fp)}")
@@ -68,7 +69,7 @@ def read_level_type_data(
             ] = "Accumulated surface net upward longwave flux"
             ds[var_name].attrs["units"] = "J m-2"
 
-    if level_type == "heightAboveGround":
+    if level_type == "heightAboveGround" and "lsm" in ds:
         # land-sea mask is given for each timestep even though it doesn't
         # change, let's remove the time dimension
         ds["lsm"] = ds.isel(time=0).lsm
@@ -76,10 +77,12 @@ def read_level_type_data(
     # add cf-complicant projection information
     _add_projection_info(ds, projection_identifier, projection_wkt)
 
-    # set cf-compliant standard_name for axes time, x and y
+    # set cf-compliant standard_name for axes time, x and y (lat/lon sources,
+    # e.g. IFS, get their lat/lon attrs from gribscan)
     ds.time.attrs["standard_name"] = "time"
-    ds.x.attrs["standard_name"] = "projection_x_coordinate"
-    ds.y.attrs["standard_name"] = "projection_y_coordinate"
+    if "x" in ds.coords and "y" in ds.coords:
+        ds.x.attrs["standard_name"] = "projection_x_coordinate"
+        ds.y.attrs["standard_name"] = "projection_y_coordinate"
 
     return ds
 

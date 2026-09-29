@@ -23,47 +23,118 @@ NB: note that for DINI we have fewer height-levels and so I have only included `
 
 ### Periodic running
 
-For now running the conversion to zarr and writing to s3 the `run.sh` script
-should be executed in for example a tmux session.
+For continuous operation run the pipeline watcher, e.g. in a tmux session
+(or as the container entrypoint, which does this by default):
+
+```bash
+uv run python -m zarr_creator run --watch
+```
+
+This polls for the latest 3-hourly analysis time every 5 minutes, builds
+indexes/refs when missing, and converts to zarr (retrying on failure).
+If not all source GRIB files for the analysis time have arrived yet, it logs
+a warning and tries again on the next poll instead of exiting.
+For a single analysis time (cron / Kubernetes Job), omit `--watch` and
+optionally pass `--t-analysis`, an ISO8601 time with a timezone or `latest`
+(the default: now minus 2 hours, floored to a 3-hour boundary). `--watch`
+always follows the latest analysis time, so it cannot be combined with
+`--t-analysis`. A one-shot run exits non-zero (e.g. when source files
+are missing) so the scheduler can retry, and conversion failures retry
+forever unless you pass `--max-retries N`:
+
+```bash
+uv run python -m zarr_creator run --t-analysis 2025-02-27T15:00:00Z
+```
 
 ### Manually running
 
 Running the conversion manually requires two steps:
 
-1. Build GRIB indexes and and refs by calling GRIB scan directly:
+1. Build GRIB indexes and refs:
 
 ```bash
-./build_indexes_and_refs.sh 2025-02-27T15:00Z
+uv run python -m zarr_creator.pipeline.index_refs --t-analysis 2025-02-27T15:00:00Z
 ```
 
-This writes refs to `refs/`. If you want to copy source GRIB files to a
-temporary location before indexing, set `SRC_GRIB_TEMP_PATH` as an environment
-variable.
+This writes refs to `refs/`. If you want to stage source GRIB files in a
+temporary location before indexing (recommended for S3 sources), set
+`SRC_GRIB_TEMP_PATH` as an environment variable.
 
-2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the target s3 bucket:
+2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the configured output:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name DINI
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name dini
 ```
 
-`suite-name` can optionally be set to `DINI` (default) or `IG`
+`suite-name` can be set to `dini` (default), `ig` or `ifs` (see below).
+Output destinations come from `DST_ZARR_OUTPUT_PATH` (default:
+`file:///tmp/{suite_name}-recent/{dataset_id}.zarr`, i.e. local only).
+
+### IFS (boundary input for ANNA)
+
+The `ifs` suite converts ECMWF IFS control forecasts (formerly HRES) as
+delivered to DMI's ECMWF cache on Scale (`/dmidata/cache/mdcprd/gdb/ecmwf/`,
+files `dei_dj_ifs-ens-cf_od_oper_fc_<base>_<valid>_<step>h`, one per cycle
+and step, 0.1° lat/lon). It writes a single `ifs.zarr` per cycle, laid out as
+the ANNA boundary datastore expects (see the contract in
+`mlwm-deployment/configurations/ANNA/configs/ifs_7deg_model1_config.yaml`):
+
+- ERA5/WeatherBench2 variable names
+- dims `time` (analysis time), `prediction_timedelta`, `level` (hPa),
+  `latitude` and `longitude`
+- regridded linearly to 0.25° over lat 40.25–71.75, lon −19.5–32.0
+
+The suite changes some defaults:
+
+- cycles are 6-hourly with a 7h delivery lag for `--t-analysis latest`
+- `MAX_HOUR` defaults to 72, and steps go every 3h
+- `MEMBER_ID` defaults to `control`
+- the `.index` files are written to the refs directory, not next to the
+  source files, since the ECMWF cache is shared
+
+```bash
+uv run python -m zarr_creator run --suite-name ifs \
+    --src-grib-root-uri /dmidata/cache/mdcprd/gdb/ecmwf \
+    --t-analysis 2026-09-28T00:00:00Z \
+    --dst-zarr-output-path 'file:///tmp/{suite_name}/{t_analysis}/{dataset_id}.zarr'
+```
+
+The variable mapping (IFS shortName → output name) is in
+`zarr_creator/config_ifs.py`. Three pressure-level fields aren't delivered
+as ANNA needs them, so they are derived:
+
+- `geopotential` = geopotential height `gh` × 9.80665 (exact)
+- `specific_humidity` comes from relative humidity `r` and temperature `t`,
+  using the IFS's mixed-phase saturation vapour pressure. That inverts how
+  the IFS defines `r`, so it's close to exact.
+- 600 hPa isn't delivered, so all variables there are interpolated linearly
+  in ln(p) between 500 and 700 hPa. This is an approximation.
 
 ## Runtime Defaults
 
-Shared runtime defaults are defined in `script_defaults.sh`.
-Both `run.sh` and `build_indexes_and_refs.sh` source this file.
+Shared runtime defaults are defined in `zarr_creator/settings.py` (one module
+per setting, each mapped 1:1 to an environment variable).
+
+**Configuration precedence: CLI flag > environment variable > built-in
+default.** The container is configured purely via environment (its
+entrypoint takes no config args); flags are manual overrides. For example,
+`--max-hour 12` beats `MAX_HOUR=12`, which beats the built-in `36`.
 
 You can override any default by exporting the corresponding environment variable
-before running either script.
+before running, or by passing the corresponding CLI flag (e.g.
+`--max-hour`, `--src-grib-root-uri`, `--dst-zarr-output-path`).
 
-| Variable | Script default | Default in container | Meaning |
+| Variable | Built-in default | Default in container | Meaning |
 |---|---|---|---|
-| `SRC_GRIB_ROOT_PATH` | `/mnt/harmonie-data-from-pds/ml` | *as script default* | Path where source GRIB forecast files are read from. |
-| `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written. |
-| `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are copied to this temporary working directory before indexing. If unset, files are indexed directly from `SRC_GRIB_ROOT_PATH`. |
-| `MEMBER_ID` | `CONTROL__dmi` | *as script default* | Forecast member identifier in file names. |
-| `MAX_HOUR` | `36` | *as script default* | Maximum forecast hour included by `build_indexes_and_refs.sh` (inclusive, `000..MAX_HOUR`). |
-| `SUITE_NAME` | *unset* | *unset* | Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. Defaults to `DINI` when unset. |
+| `SRC_GRIB_ROOT_URI` | `/mnt/harmonie-data-from-pds/ml` | *as built-in default* | Root URI that GRIB forecast files resolve relative to; a local path or `s3://bucket/prefix`. (`SRC_GRIB_ROOT` / `SRC_GRIB_ROOT_PATH` still work as deprecated aliases.) |
+| `REFS_ROOT_PATH` | `/home/ec2-user/nwp-forecast-zarr-creator/refs` | `/app/refs` | Directory where gribscan refs are written (always local). Once an analysis time has been converted its refs are deleted, leaving only a `.done` marker so it is not processed again (pass `--no-cleanup` to keep them). |
+| `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are staged here before indexing. If unset, files are indexed in place from `SRC_GRIB_ROOT_URI` (S3 sources without a staging path log a warning). |
+| `DST_ZARR_OUTPUT_PATH` | `file:///tmp/{suite_name}-recent/{dataset_id}.zarr` | `s3://harmonie-zarr/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr` | Full output-path format string (`{suite_name}`, `{member}`, `{t_analysis}`, `{dataset_id}`), written via fsspec (local path or `s3://`). Must contain `{dataset_id}`; without `{t_analysis}` each run overwrites the previous output. |
+| `MEMBER_ID` | `CONTROL__dmi` (`control` for `ifs`) | *as built-in default* | Forecast member identifier in file names (IFS file names have none; it's only used in the refs path). |
+| `MAX_HOUR` | `36` (`72` for `ifs`) | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`; every 3h for `ifs`). |
+| `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `dini`, `ig` and `ifs`. |
+| `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
+| `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.
@@ -73,37 +144,35 @@ Example overrides:
 ```bash
 export MAX_HOUR=12
 export SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator
-./build_indexes_and_refs.sh 2025-02-27T15:00:00Z
+uv run python -m zarr_creator.pipeline.index_refs --t-analysis 2025-02-27T15:00:00Z
 ```
 
-Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (default script behavior):
+Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (index in place):
 
 ```mermaid
 flowchart TB
   subgraph H["Host OS"]
-    H1["/mnt/harmonie-data-from-pds/ml<br/>(GRIB files)"]
+    H1["GRIB source<br/>(local dir or S3 bucket)"]
     H2["/tmp (optional bind mount target)"]
   end
 
   subgraph C["Container"]
-    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
-    C2["build_indexes_and_refs.sh"]
+    C1["${SRC_GRIB_ROOT_URI}<br/>local path or s3://bucket/prefix"]
+    C2["pipeline.index_refs"]
     C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
-    C4["zarr_creator"]
-    C5["S3 bucket<br/>(final zarr output)"]
-    C6["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
+    C4["zarr_creator convert"]
+    C5["${DST_ZARR_OUTPUT_PATH}<br/>(single zarr destination)"]
   end
 
-  H1 -->|mounted as| C1
+  H1 -->|mounted or read via fsspec| C1
   C1 -->|read by| C2
   C2 -->|writes to| C3
   C3 -->|read by| C4
   C4 -->|writes to| C5
-  C4 -->|writes to| C6
-  C6 -->|can be persisted via /tmp mount| H2
+  C5 -->|can be persisted via /tmp mount| H2
 ```
 
-Data flow when `SRC_GRIB_TEMP_PATH` is **set** (copy-before-indexing):
+Data flow when `SRC_GRIB_TEMP_PATH` is **set** (stage-before-indexing):
 
 ```mermaid
 flowchart TB
@@ -113,25 +182,23 @@ flowchart TB
   end
 
   subgraph C["Container"]
-    C1["${SRC_GRIB_ROOT_PATH}<br/>default=/mnt/harmonie-data-from-pds/ml"]
+    C1["${SRC_GRIB_ROOT_URI}<br/>local path or s3://bucket/prefix"]
     C2["${SRC_GRIB_TEMP_PATH}<br/>default=unset (prod Docker default=/tmp/nwp-forecast-zarr-creator)"]
-    C3["build_indexes_and_refs.sh"]
+    C3["pipeline.index_refs"]
     C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
-    C5["zarr_creator"]
-    C6["S3 bucket<br/>(final zarr output)"]
-    C7["/tmp/{suite-name}-recent<br/>(local zarr copy)"]
+    C5["zarr_creator convert"]
+    C6["${DST_ZARR_OUTPUT_PATH}<br/>(single zarr destination)"]
   end
 
-  H1 -->|mounted as| C1
+  H1 -->|mounted, or read via fsspec| C1
   H2 -->|mounted as /tmp| C2
   C1 -->|read by| C3
-  C3 -->|copied to| C2
+  C3 -->|staged to| C2
   C2 -->|read by for index build| C3
   C3 -->|writes to| C4
   C4 -->|read by| C5
   C5 -->|writes to| C6
-  C5 -->|writes to| C7
-  C7 -->|persisted via /tmp mount| H2
+  C6 -->|can be persisted via /tmp mount| H2
 ```
 
 ### Intake Catalog Usage
@@ -164,12 +231,17 @@ catalog = open_intake_catalog()
 ds_dini_hl = catalog["height_levels"]._entry(analysis_time=analysis_time).to_dask()
 ```
 
-# TODO
+# Implementation notes
 
-- most of the execution takes place in `run.sh` which orchestrates the retry if something goes wrong. This could be rewritten in python. I found it easier to start by prototyping this as a batch script.
-- creation of GRIB indexes and refs from the indexes are done in a bash script `build_indexes_and_refs.sh` and is done by directly with gribscan (using the gribscan command-line interface) rather than using the dmi "data-catalog" python package `dmidc`. This was done because it turns out that DINI uses the special paramId for for example u-wind at 10m and 100m which is different from the parameter IDs for u-wind in general. This made calling the data-catalog cumbersome. Also, calling gribscan directly makes it more explicit how variables are mapped by level-type into the `height_levels.zarr`, `presure_levels.zarr` and `single_levels.zarr` more explicit. The bash script could be replaced with python code though.
-- The writing of the output zarr datasets sometimes fails. I think this is due to issues in eccodes, but I am not sure. It could also be due to s3fs (FUSE) mounts being a bit brittle. In least in my experience copying the source GRIB files from the mounted s3 bucket avoid similar issues when creating the GRIB-indexes. Maybe something similar is needed when writing to the s3 bucket (i.e. create zarr then write to the bucket). I think it would better to use `fsspec`'s `s3` protocol implementation for reading and writing to/from s3 buckets instead of relying on s3fs
-- the periodic running could be done in python too rather than relying on a do-loop in a bash script.
+- GRIB indexes and refs are built by calling gribscan directly (rather than
+  using the DMI "data-catalog" python package `dmidc`), because DINI uses
+  special paramIds for e.g. u-wind at 10m and 100m that differ from the
+  general u-wind parameter IDs, which made data-catalog cumbersome. Calling
+  gribscan directly also makes the mapping of variables by level-type into
+  `height_levels.zarr`, `pressure_levels.zarr` and `single_levels.zarr` more
+  explicit.
+- S3 is accessed via `fsspec`'s `s3` protocol implementation, not via s3fs
+  (FUSE) mounts.
 
 
 # Running with Docker
@@ -196,18 +268,33 @@ Build image (using most recent git tag to set tag for image):
 docker build -t nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0) .
 ```
 
-Run container:
+Run container (by default the image runs the pipeline watcher, i.e. `run --watch`):
 
 ```bash
 docker run --rm -it -v /mnt/:/mnt/ -v /tmp/:/tmp/ --name nwp-forecast-zarr-creator nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0)
 ```
 
+Arguments after the image name replace the default `--watch`, so to process a
+single analysis time and exit (cron / Kubernetes Job) pass `--t-analysis`
+(omit it to use the latest complete analysis time):
+
+```bash
+docker run --rm -it -v /mnt/:/mnt/ -v /tmp/:/tmp/ nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0) --t-analysis 2025-02-27T15:00:00Z
+```
+
+Configuration is purely via environment variables (see Runtime Defaults
+above), e.g. `-e SRC_GRIB_ROOT_URI=s3://my-bucket/ml -e
+DST_ZARR_OUTPUT_PATH=s3://my-out/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr`.
+
 In the production Docker image, `SRC_GRIB_TEMP_PATH` is set by default to
-`/tmp/nwp-forecast-zarr-creator`, so GRIB files are copied before indexing
-unless you override `SRC_GRIB_TEMP_PATH`.
+`/tmp/nwp-forecast-zarr-creator`, so GRIB files are staged before indexing
+unless you override `SRC_GRIB_TEMP_PATH`, and `DST_ZARR_OUTPUT_PATH`
+defaults to the timestamped `s3://harmonie-zarr/...` layout.
 
 Regarding the volume mounts:
-- The S3-buckets used for reading data are expected to be mounted in `/mnt/`
-  (e.g. using `s3fs`), so we map them into the container from the system.
+- If source GRIBs live on the host filesystem, mount them (e.g. `-v /mnt/:/mnt/`)
+  and point `SRC_GRIB_ROOT_URI` at the mount. Alternatively set
+  `SRC_GRIB_ROOT_URI=s3://bucket/prefix` to read directly from object
+  storage (credentials via `SRC_AWS_PROFILE` / `~/.aws`, no s3fs mount needed).
 - By mounting the `/tmp` path to the system one we avoid having to copy the
   files on every execution by using the system storage as a cache.

@@ -1,55 +1,40 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import datetime
-import shutil
 import warnings
-from pathlib import Path
 
-import fsspec
 import xarray as xr
 from loguru import logger
 
-BUCKET_NAME = "harmonie-zarr"
-BUCKET_REGION = "eu-central-1"
-OUTPUT_PREFIX_FORMAT = "{suite_name}/{member}/{t_analysis_formatted}/{dataset_id}.zarr"
+from . import storage
 
 
 def write_output_zarrs(
     ds: xr.Dataset,
-    dataset_id: str,
+    output_path: str,
     rechunk_to: dict,
-    member: str,
-    t_analysis: datetime.datetime,
-    suite_name: str,
-    skip_s3_bucket_upload: bool = False,
-    local_copy_path: str = None,
+    profile: str | None = None,
 ):
     """
-    Write a xarray dataset to zarr, always creating a local copy and optionally
-    uploading to S3.
+    Write an xarray dataset to a single zarr destination (local path or
+    ``s3://`` URI, dispatched via fsspec).
 
     Parameters
     ----------
     ds : xarray.Dataset
         The dataset to write.
-    dataset_id: str
-        The dataset id, e.g. "single_levels" or "pressure_levels"
+    output_path : str
+        Fully formatted destination, e.g.
+        ``file:///tmp/dini-recent/single_levels.zarr`` or
+        ``s3://harmonie-zarr/dini/control/2025-03-02T060000Z/single_levels.zarr``.
+        S3 authentication uses ``profile`` (endpoint/keys/region resolve
+        from ``~/.aws`` via botocore/s3fs).
     rechunk_to : dict
         A dictionary specifying the target chunk size for each dimension.
         Only the dimensions that are present in the dataset will be used, and
         the size limited to the size of the dimension (if the chunk size
         provided is larger).
-    member : str
-        The forecast member name, e.g. "control"
-    t_analysis : datetime.datetime
-        The analysis time of the forecast.
-    suite_name : str
-        The name of the forecast suite, e.g. "dini" or "ig"
-    skip_s3_bucket_upload : bool, optional
-        If True, skip uploading the output zarr dataset to S3.
-    local_copy_path : str, optional
-        If provided, a local copy of the zarr dataset will also be saved to
-        this path, but without the timestamp with the filename `{part_id}.zarr`.
+    profile : str, optional
+        AWS profile for S3 destinations.
     """
     for d in ds.dims:
         dim_len = len(ds[d])
@@ -77,36 +62,11 @@ def write_output_zarrs(
     for var_name in ds.data_vars:
         ds[var_name].encoding = {}
 
-    t_analysis_formatted = t_analysis.isoformat().replace(":", "").replace("+0000", "Z")
-    prefix = OUTPUT_PREFIX_FORMAT.format(
-        suite_name=suite_name,
-        member=member,
-        t_analysis_formatted=t_analysis_formatted,
-        dataset_id=dataset_id,
-    )
+    logger.info(f"Writing to {output_path}")
+    fs, path = storage.resolve_fs(output_path, profile)
+    target = fs.get_mapper(path, create=True)
+    ds.to_zarr(target, mode="w", compute=True, consolidated=True)
 
-    fn_local = f"{dataset_id}.zarr"
-    if local_copy_path is not None:
-        Path(local_copy_path).mkdir(parents=True, exist_ok=True)
-        fp_local = Path(local_copy_path) / fn_local
-        if fp_local.exists():
-            logger.warning(f"Local copy path {fp_local} already exists, overwriting")
-            shutil.rmtree(fp_local)
-
-        logger.info(f"Writing local copy to {fp_local}")
-        ds.to_zarr(fp_local, mode="w")
-
-    if skip_s3_bucket_upload:
-        logger.info("Skipping S3 upload (--skip-s3-bucket-upload enabled)")
-    else:
-        path_out = f"s3://{BUCKET_NAME}/{prefix}"
-        logger.info(f"Writing to {path_out}", flush=True)
-        target = fsspec.get_mapper(
-            path_out,
-            client_kwargs={"region_name": BUCKET_REGION},
-        )
-        ds.to_zarr(target, mode="w", compute=True, consolidated=True)
-
-    logger.info("done!", flush=True)
+    logger.info("done!")
 
     return

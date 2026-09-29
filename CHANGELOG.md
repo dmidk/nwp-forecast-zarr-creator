@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `ifs` suite: converts ECMWF IFS control forecasts from DMI's ECMWF cache
+  (`dei_dj_ifs-ens-cf_od_oper_fc_*`, GRIB1/2 0.1° lat/lon) into one `ifs.zarr`
+  per cycle in the layout of the ANNA boundary datastore. It uses ERA5 names,
+  dims `time`/`prediction_timedelta`/`level`/`latitude`/`longitude`, and is
+  regridded to 0.25°. The feed has no specific humidity and no 600 hPa, so
+  `q` is derived from `r` and `t`, and 600 hPa is interpolated in ln(p)
+  between 500 and 700 hPa. Each suite now has its own file names, gribscan
+  magician, cycle interval, delivery lag and `MAX_HOUR`/`MEMBER_ID` defaults
+  (`zarr_creator/suites.py`).
+
+### Changed
+
+- `--t-analysis latest` resolves using the suite's cycle interval and lag,
+  after the suite is known.
+- Refs are assembled in-process via `gribscan.grib_magic` instead of the
+  `gribscan-build` CLI, so suites can use their own magician.
+- `python -m zarr_creator run` now passes its refs root, member id, output
+  path and destination profile on to the conversion step. Before, the
+  conversion re-read these from the environment and ignored the
+  corresponding CLI flags.
+
+- Python-only orchestration: `run.sh`, `build_indexes_and_refs.sh`,
+  `script_defaults.sh`, and `scripts/download_harmonie_data.sh` are removed,
+  replaced by `zarr_creator.settings`, `zarr_creator.storage` (fsspec),
+  `zarr_creator.pipeline.index_refs`, and `zarr_creator.pipeline.runner`
+  (`python -m zarr_creator run [--watch]`).
+- S3-native GRIB input: `SRC_GRIB_ROOT_URI` accepts `s3://bucket/prefix` or a
+  local path (auto-dispatched via fsspec); per-side AWS profiles
+  (`SRC_AWS_PROFILE`/`DST_AWS_PROFILE` → `AWS_PROFILE`, details from `~/.aws`).
+- Single configurable zarr destination `DST_ZARR_OUTPUT_PATH` (full
+  format-string path, local or S3); `--skip-s3-bucket-upload` is removed.
+- The container image entrypoint is `python -m zarr_creator run` with default
+  argument `--watch`: `docker run image` watches as before, while
+  `docker run image --t-analysis <time>` processes one analysis time and exits.
+- In `--watch` mode an incomplete set of source GRIBs is retried on the next
+  poll instead of stopping the process.
+- The refs of an analysis time are deleted after a successful conversion,
+  leaving a `.done` marker in its refs directory, so `REFS_ROOT_PATH` no longer
+  grows without bound. An analysis time now counts as processed only when the
+  marker exists (a refs directory left by an interrupted run is rebuilt).
+  Existing refs directories have no marker, so the current analysis time is
+  rebuilt once after upgrading; delete older refs directories by hand.
+  `run --no-cleanup` keeps the refs and staged GRIB files (for development).
+- New `python -m zarr_creator.create_test_fixture` for frozen S3 test fixtures
+  (`--dest-dir` stages locally for development).
+
 ## [v0.8.0]
 
 This release adds functionality for converting IG grib files, while still defaulting to DINI configuration if no SUITE_NAME environment variable is set.
