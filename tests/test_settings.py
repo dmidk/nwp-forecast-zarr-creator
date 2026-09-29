@@ -188,17 +188,17 @@ def test_resolve_t_analysis_latest_custom_lag(monkeypatch):
 
 
 @pytest.mark.parametrize("value", ["0", "5", "-3", "hourly"])
-def test_analysis_interval_hours_rejects_invalid(monkeypatch, value):
+def test_get_analysis_interval_in_hours_rejects_invalid(monkeypatch, value):
     monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", value)
     with pytest.raises(ValueError, match="ANALYSIS_INTERVAL_HOURS"):
-        s.analysis_interval_hours()
+        s.get_analysis_interval_in_hours()
 
 
 @pytest.mark.parametrize("value", ["-1", "two"])
-def test_analysis_lag_hours_rejects_invalid(monkeypatch, value):
+def test_get_analysis_lag_in_hours_rejects_invalid(monkeypatch, value):
     monkeypatch.setenv("ANALYSIS_LAG_HOURS", value)
     with pytest.raises(ValueError, match="ANALYSIS_LAG_HOURS"):
-        s.analysis_lag_hours()
+        s.get_analysis_lag_in_hours()
 
 
 def test_resolve_t_analysis_explicit_and_naive():

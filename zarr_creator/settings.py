@@ -144,7 +144,7 @@ DEFAULT_ANALYSIS_LAG_HOURS = 2
 LATEST = "latest"
 
 
-def analysis_interval_hours() -> int:
+def get_analysis_interval_in_hours() -> int:
     """Hours between analysis times (env: ``ANALYSIS_INTERVAL_HOURS``).
 
     Must divide 24 so the analysis times fall on the same hours every day.
@@ -164,7 +164,7 @@ def analysis_interval_hours() -> int:
     return hours
 
 
-def analysis_lag_hours() -> float:
+def get_analysis_lag_in_hours() -> float:
     """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``)."""
     raw = _getenv("ANALYSIS_LAG_HOURS", str(DEFAULT_ANALYSIS_LAG_HOURS))
     try:
@@ -189,9 +189,9 @@ def compute_analysis_time(
     ``ANALYSIS_INTERVAL_HOURS`` (defaults 2 and 3).
     """
     if lag_hours is None:
-        lag_hours = analysis_lag_hours()
+        lag_hours = get_analysis_lag_in_hours()
     if interval_hours is None:
-        interval_hours = analysis_interval_hours()
+        interval_hours = get_analysis_interval_in_hours()
     if now.tzinfo is None:
         now = now.replace(tzinfo=datetime.timezone.utc)
     adjusted = now - datetime.timedelta(hours=lag_hours)
