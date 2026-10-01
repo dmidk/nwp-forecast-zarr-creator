@@ -263,3 +263,17 @@ Regarding the volume mounts:
   storage (credentials via `SRC_AWS_PROFILE` / `~/.aws`, no s3fs mount needed).
 - By mounting the `/tmp` path to the system one we avoid having to copy the
   files on every execution by using the system storage as a cache.
+
+## Published container images
+
+CI (`.github/workflows/container-image.yml`) builds the image on every push and
+pull request to check that it still builds, but does not publish it. Images are
+only published to `ghcr.io/dmidk/nwp-forecast-zarr-creator` when a version tag
+(`v*`) is pushed, and are tagged with the version and `latest`:
+
+```bash
+docker pull ghcr.io/dmidk/nwp-forecast-zarr-creator:v0.9.0
+```
+
+To publish a new image, make a release: tag the commit on `main` and push the
+tag, e.g. `git tag v0.9.0 && git push upstream v0.9.0`.
