@@ -6,8 +6,8 @@ Flow per analysis time, for each of the ``sf``/``pl`` file types:
    ``0..MAX_HOUR`` and verify completeness (replaces the ``test -f`` loop).
 2. If ``SRC_GRIB_TEMP_PATH`` is set, download/copy files there first and
    index the staged copy (replaces ``rsync``); otherwise index in place.
-   S3 sources without a temp path log a warning — direct S3 reads by
-   gribscan/eccodes are unverified — and are attempted in place anyway.
+   gribscan only reads plain local paths, so a source on any other
+   filesystem (e.g. ``s3://``) requires ``SRC_GRIB_TEMP_PATH``.
 3. Run ``gribscan-index`` in-process (with the local DMI eccodes
    definitions path set) and ``gribscan-build`` with
    ``--prefix <src>/ -m harmonie``.
@@ -17,6 +17,7 @@ import argparse
 import datetime
 import os
 
+from fsspec.core import split_protocol
 from loguru import logger
 
 from .. import storage
@@ -112,17 +113,14 @@ def build_indexes_and_refs(
         )
         src_dir = _download_with_hint(urls, settings, profile, anon)
     else:
-        if _is_s3_uri(settings.src_grib_root_uri):
-            logger.warning(
-                "Source is S3 but SRC_GRIB_TEMP_PATH is not set; "
-                "gribscan/eccodes likely cannot read directly from S3. "
-                "Set SRC_GRIB_TEMP_PATH to stage files locally. "
-                "Attempting in-place reads anyway."
+        protocol, src_dir = split_protocol(settings.src_grib_root_uri)
+        if protocol not in (None, "file", "local"):
+            raise ValueError(
+                f"SRC_GRIB_TEMP_PATH must be set to read from "
+                f"{settings.src_grib_root_uri}: gribscan can only index files on "
+                "the local filesystem."
             )
-        logger.info(
-            f"No staging path set, indexing directly from {settings.src_grib_root_uri}"
-        )
-        src_dir = settings.src_grib_root_uri
+        logger.info(f"No staging path set, indexing directly from {src_dir}")
 
     refs_dir = refs_dir_for(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
