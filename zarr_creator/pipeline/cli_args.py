@@ -21,8 +21,9 @@ from ..settings import (
 
 T_ANALYSIS_HELP = (
     "Analysis time as an ISO8601 string with a timezone, e.g. "
-    f"2025-03-02T00:00:00Z, or '{LATEST}' for the most recent 3-hourly "
-    "analysis time (now minus 2 hours, floored to a 3-hour boundary)"
+    f"2025-03-02T00:00:00Z, or '{LATEST}' for the most recent analysis time "
+    "(now minus ANALYSIS_LAG_HOURS, default 2, floored to a multiple of "
+    "ANALYSIS_INTERVAL_HOURS, default 3)"
 )
 
 

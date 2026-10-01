@@ -138,25 +138,66 @@ def require_utc(t_analysis: datetime.datetime) -> datetime.datetime:
     return t_analysis.astimezone(datetime.timezone.utc)
 
 
-ANALYSIS_INTERVAL_SECONDS = 3 * 3600
-DEFAULT_LAG_HOURS = 2
+DEFAULT_ANALYSIS_INTERVAL_HOURS = 3
+DEFAULT_ANALYSIS_LAG_HOURS = 2
 # Sentinel for "the most recent analysis time that should be available".
 LATEST = "latest"
 
 
-def compute_analysis_time(
-    now: datetime.datetime, lag_hours: float = DEFAULT_LAG_HOURS
-) -> datetime.datetime:
-    """Most recent 3-hourly analysis time, allowing ``lag_hours`` for delivery.
+def get_analysis_interval_in_hours() -> int:
+    """Hours between analysis times (env: ``ANALYSIS_INTERVAL_HOURS``).
 
-    Subtracts the lag from ``now`` and floors to the 3-hour grid, e.g. at
-    05:00 UTC with a 2h lag the result is 03:00 UTC.
+    Must divide 24 so the analysis times fall on the same hours every day.
     """
+    raw = _getenv("ANALYSIS_INTERVAL_HOURS", str(DEFAULT_ANALYSIS_INTERVAL_HOURS))
+    try:
+        hours = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"ANALYSIS_INTERVAL_HOURS must be an integer, got: {raw!r}"
+        ) from exc
+    if hours <= 0 or 24 % hours != 0:
+        raise ValueError(
+            f"ANALYSIS_INTERVAL_HOURS must divide 24 (1, 2, 3, 4, 6, 8, 12 or 24), "
+            f"got: {hours}"
+        )
+    return hours
+
+
+def get_analysis_lag_in_hours() -> float:
+    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``)."""
+    raw = _getenv("ANALYSIS_LAG_HOURS", str(DEFAULT_ANALYSIS_LAG_HOURS))
+    try:
+        hours = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"ANALYSIS_LAG_HOURS must be a number, got: {raw!r}") from exc
+    if hours < 0:
+        raise ValueError(f"ANALYSIS_LAG_HOURS must be >= 0, got: {hours}")
+    return hours
+
+
+def compute_analysis_time(
+    now: datetime.datetime,
+    lag_hours: float | None = None,
+    interval_hours: int | None = None,
+) -> datetime.datetime:
+    """Most recent analysis time, allowing ``lag_hours`` for delivery.
+
+    Subtracts the lag from ``now`` and floors to the analysis interval, e.g.
+    at 05:00 UTC with a 2h lag and a 3h interval the result is 03:00 UTC.
+    Unset arguments come from ``ANALYSIS_LAG_HOURS`` and
+    ``ANALYSIS_INTERVAL_HOURS`` (defaults 2 and 3).
+    """
+    if lag_hours is None:
+        lag_hours = get_analysis_lag_in_hours()
+    if interval_hours is None:
+        interval_hours = get_analysis_interval_in_hours()
     if now.tzinfo is None:
         now = now.replace(tzinfo=datetime.timezone.utc)
     adjusted = now - datetime.timedelta(hours=lag_hours)
+    interval_seconds = interval_hours * 3600
     epoch = int(adjusted.timestamp())
-    rounded = epoch // ANALYSIS_INTERVAL_SECONDS * ANALYSIS_INTERVAL_SECONDS
+    rounded = epoch // interval_seconds * interval_seconds
     return datetime.datetime.fromtimestamp(rounded, tz=datetime.timezone.utc)
 
 

@@ -20,6 +20,19 @@ def test_resolve_local_and_memory():
     assert path_m == "/bucket/file"
 
 
+@pytest.mark.parametrize(
+    "value, verify", [(None, True), ("1", True), ("0", False), ("false", False)]
+)
+def test_s3_verify_ssl_env(monkeypatch, value, verify):
+    if value is None:
+        monkeypatch.delenv("S3_VERIFY_SSL", raising=False)
+    else:
+        monkeypatch.setenv("S3_VERIFY_SSL", value)
+    assert storage.s3_verify_ssl() is verify
+    fs, _ = storage.resolve_fs("s3://bucket/key", anon=True)
+    assert fs.client_kwargs.get("verify", True) is verify
+
+
 def test_exists_and_find_missing_local(tmp_path):
     a = str(tmp_path / "a")
     _write(a)

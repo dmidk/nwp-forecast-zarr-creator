@@ -19,6 +19,11 @@ RUN uv sync
 # Check that version is set correctly from git (i.e. not the default "0.0.0")
 RUN uv run python -c "import zarr_creator; assert zarr_creator.__version__ != '0.0.0'"
 
+# Stop `uv run` from syncing the environment at startup: it may otherwise
+# try to rebuild the project, fetching the build backend from PyPI, which
+# fails where there is no internet access (e.g. Matrix).
+ENV UV_NO_SYNC=1
+
 # --watch is the default argument (not part of the entrypoint) so that passing
 # arguments, e.g. `--t-analysis 2025-02-27T15:00:00Z`, runs a single analysis
 # time and exits instead of watching.
