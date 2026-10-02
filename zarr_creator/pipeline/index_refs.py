@@ -13,7 +13,6 @@ Flow per analysis time, for each of the ``sf``/``pl`` file types:
    ``--prefix <src>/ -m harmonie``.
 """
 
-import argparse
 import datetime
 import os
 
@@ -24,19 +23,12 @@ from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
 from ..settings import (
     FILE_TYPES,
-    LATEST,
     Settings,
     describe_source_auth,
     expected_grib_filenames,
     refs_dir_for,
     require_utc,
     source_profile,
-)
-from .cli_args import (
-    T_ANALYSIS_HELP,
-    add_settings_arguments,
-    settings_from_args,
-    t_analysis_arg,
 )
 
 
@@ -145,22 +137,3 @@ def build_indexes_and_refs(
         _run_build_refs(index_files, refs_dir, prefix=src_dir.rstrip("/") + "/")
 
     return refs_dir
-
-
-def main(argv=None) -> str:
-    """CLI: ``python -m zarr_creator.pipeline.index_refs --t-analysis ...``."""
-    parser = argparse.ArgumentParser(description="Build GRIB indexes and refs")
-    parser.add_argument(
-        "--t-analysis",
-        type=t_analysis_arg,
-        default=LATEST,
-        help=T_ANALYSIS_HELP + " (default: %(default)s)",
-    )
-    add_settings_arguments(parser)
-    args = parser.parse_args(argv)
-    settings = settings_from_args(args)
-    return build_indexes_and_refs(args.t_analysis, settings)
-
-
-if __name__ == "__main__":
-    main()

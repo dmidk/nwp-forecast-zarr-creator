@@ -5,6 +5,7 @@ import os
 
 import pytest
 
+from zarr_creator.__main__ import cli
 from zarr_creator.pipeline import runner
 from zarr_creator.settings import Settings
 
@@ -153,15 +154,15 @@ def test_process_one_no_cleanup_keeps_refs_and_staged_files(tmp_path, monkeypatc
     assert runner.refs_done(t, settings)
 
 
-def test_main_passes_no_cleanup(tmp_path, monkeypatch):
+def test_run_cli_passes_no_cleanup(tmp_path, monkeypatch):
     seen = {}
     monkeypatch.setattr(
         runner, "process_one", lambda t, s, **k: seen.update(k) or "done"
     )
     monkeypatch.setenv("REFS_ROOT_PATH", str(tmp_path))
-    runner.main([])
+    cli(["run"])
     assert seen["cleanup"] is True
-    runner.main(["--no-cleanup"])
+    cli(["run", "--no-cleanup"])
     assert seen["cleanup"] is False
 
 
@@ -255,7 +256,7 @@ def test_poll_once_propagates_other_errors(tmp_path, monkeypatch):
 
 
 def _stub_main(monkeypatch, tmp_path):
-    """Stub out the work ``runner.main`` does so only arg handling runs."""
+    """Stub out the work of the ``run`` subcommand so only arg handling runs."""
     calls = {}
     monkeypatch.setattr(runner, "watch_loop", lambda s, **k: calls.update(watch=True))
     monkeypatch.setattr(
@@ -266,37 +267,37 @@ def _stub_main(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("t", ["2025-03-02T06:00:00Z", "latest"])
-def test_main_watch_and_t_analysis_are_mutually_exclusive(
+def test_run_cli_watch_and_t_analysis_are_mutually_exclusive(
     tmp_path, monkeypatch, capsys, t
 ):
     calls = _stub_main(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
-        runner.main(["--watch", "--t-analysis", t])
+        cli(["run", "--watch", "--t-analysis", t])
     assert "not allowed with argument" in capsys.readouterr().err
     assert calls == {}
 
 
-def test_main_watch_alone_runs_watcher(tmp_path, monkeypatch):
+def test_run_cli_watch_alone_runs_watcher(tmp_path, monkeypatch):
     calls = _stub_main(monkeypatch, tmp_path)
-    runner.main(["--watch"])
+    cli(["run", "--watch"])
     assert calls == {"watch": True}
 
 
-def test_main_one_shot_resolves_t_analysis(tmp_path, monkeypatch):
+def test_run_cli_one_shot_resolves_t_analysis(tmp_path, monkeypatch):
     calls = _stub_main(monkeypatch, tmp_path)
-    runner.main(["--t-analysis", "2025-03-02T06:00:00Z"])
+    cli(["run", "--t-analysis", "2025-03-02T06:00:00Z"])
     assert calls["one"] == _utc(2025, 3, 2, 6)
-    runner.main([])  # default: latest
+    cli(["run"])  # default: latest
     assert calls["one"].minute == 0 and calls["one"].hour % 3 == 0
 
 
-def test_main_rejects_naive_t_analysis(tmp_path, monkeypatch):
+def test_run_cli_rejects_naive_t_analysis(tmp_path, monkeypatch):
     _stub_main(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
-        runner.main(["--t-analysis", "2025-03-02T06:00:00"])
+        cli(["run", "--t-analysis", "2025-03-02T06:00:00"])
 
 
-def test_main_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
+def test_run_cli_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
     """``run`` flags reach the conversion, not just indexing (they used to be
     dropped because the conversion re-read its settings from the env)."""
     import zarr_creator.__main__ as zc_main
@@ -306,8 +307,9 @@ def test_main_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
     monkeypatch.setattr(zc_main, "convert", lambda t, s: seen.update(t=t, s=s))
     monkeypatch.delenv("SRC_GRIB_TEMP_PATH", raising=False)
     out = f"file://{tmp_path}/out/{{dataset_id}}.zarr"
-    runner.main(
+    cli(
         [
+            "run",
             "--t-analysis",
             "2025-03-02T06:00:00Z",
             "--refs-root-path",
@@ -332,16 +334,18 @@ def test_main_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("suite", ["nope", "DINI"])
-def test_main_rejects_unsupported_suite_before_indexing(tmp_path, monkeypatch, suite):
+def test_run_cli_rejects_unsupported_suite_before_indexing(
+    tmp_path, monkeypatch, suite
+):
     calls = _stub_main(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
-        runner.main(["--suite-name", suite])
+        cli(["run", "--suite-name", suite])
     assert calls == {}
 
 
-def test_main_rejects_unsupported_suite_env_before_indexing(tmp_path, monkeypatch):
+def test_run_cli_rejects_unsupported_suite_env_before_indexing(tmp_path, monkeypatch):
     calls = _stub_main(monkeypatch, tmp_path)
     monkeypatch.setenv("SUITE_NAME", "DINI")
     with pytest.raises(ValueError, match="SUITE_NAME"):
-        runner.main([])
+        cli(["run"])
     assert calls == {}
