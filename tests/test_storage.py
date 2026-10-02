@@ -69,15 +69,52 @@ def test_download_memory_to_temp(tmp_path):
     )
 
 
-def test_download_partial_failure_cleans_up(tmp_path):
+def test_download_failure_raises_original_error(tmp_path):
     fs, _ = storage.resolve_fs("memory://test-partial/")
     fs.pipe("memory://test-partial/good", b"x")
-    with pytest.raises(RuntimeError, match="Failed to download 1"):
+    stage = str(tmp_path / "stage")
+    with pytest.raises(FileNotFoundError, match="bad"):
         storage.download_to_temp(
-            ["memory://test-partial/good", "memory://test-partial/bad"],
-            str(tmp_path / "stage"),
+            ["memory://test-partial/good", "memory://test-partial/bad"], stage
         )
-    assert os.listdir(str(tmp_path / "stage")) == []
+    # Nothing is left under a final name, so a retry fetches everything again.
+    assert [f for f in os.listdir(stage) if not f.endswith(".part")] == []
+    fs.pipe("memory://test-partial/bad", b"y")
+    storage.download_to_temp(
+        ["memory://test-partial/good", "memory://test-partial/bad"], stage
+    )
+    assert sorted(os.listdir(stage)) == ["bad", "good"]
+
+
+def test_interrupted_download_is_not_reused(tmp_path, monkeypatch):
+    """A file cut off mid-transfer must be fetched again, not skipped."""
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    fs, _ = storage.resolve_fs("memory://test-interrupt/")
+    fs.pipe("memory://test-interrupt/f", b"complete")
+    stage = str(tmp_path / "stage")
+    real_get_file = MemoryFileSystem.get_file
+
+    def get_half_then_fail(self, rpath, lpath, **kwargs):
+        with open(lpath, "wb") as f:
+            f.write(b"comp")
+        raise ConnectionResetError("connection reset")
+
+    monkeypatch.setattr(MemoryFileSystem, "get_file", get_half_then_fail)
+    with pytest.raises(ConnectionResetError):
+        storage.download_to_temp(["memory://test-interrupt/f"], stage)
+    monkeypatch.setattr(MemoryFileSystem, "get_file", real_get_file)
+
+    storage.download_to_temp(["memory://test-interrupt/f"], stage)
+    with open(os.path.join(stage, "f"), "rb") as f:
+        assert f.read() == b"complete"
+
+
+def test_download_rejects_mixed_filesystems(tmp_path):
+    with pytest.raises(ValueError, match="one filesystem"):
+        storage.download_to_temp(
+            ["memory://test-mixed/a", str(tmp_path / "b")], str(tmp_path / "stage")
+        )
 
 
 def test_upload_tree_local(tmp_path):
