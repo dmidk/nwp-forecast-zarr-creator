@@ -294,3 +294,45 @@ def test_main_rejects_naive_t_analysis(tmp_path, monkeypatch):
     _stub_main(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
         runner.main(["--t-analysis", "2025-03-02T06:00:00"])
+
+
+def test_main_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
+    """``run`` flags reach the conversion, not just indexing (they used to be
+    dropped because the conversion re-read its settings from the env)."""
+    import zarr_creator.__main__ as zc_main
+
+    seen = {}
+    monkeypatch.setattr(runner, "build_indexes_and_refs", lambda t, s: None)
+    monkeypatch.setattr(zc_main, "convert", lambda t, s: seen.update(t=t, s=s))
+    monkeypatch.delenv("SRC_GRIB_TEMP_PATH", raising=False)
+    out = f"file://{tmp_path}/out/{{dataset_id}}.zarr"
+    runner.main(
+        [
+            "--t-analysis",
+            "2025-03-02T06:00:00Z",
+            "--refs-root-path",
+            str(tmp_path / "refs"),
+            "--member-id",
+            "MEMBER",
+            "--dst-zarr-output-path",
+            out,
+            "--dest-profile",
+            "writer",
+            "--suite-name",
+            "ig",
+        ]
+    )
+    assert seen["t"] == _utc(2025, 3, 2, 6)
+    s = seen["s"]
+    assert s.refs_root_path == str(tmp_path / "refs")
+    assert s.member_id == "MEMBER"
+    assert s.dst_zarr_output_path == out
+    assert s.dst_aws_profile == "writer"
+    assert s.suite_name == "ig"
+
+
+def test_main_rejects_unsupported_suite_before_indexing(tmp_path, monkeypatch):
+    calls = _stub_main(monkeypatch, tmp_path)
+    with pytest.raises(SystemExit):
+        runner.main(["--suite-name", "nope"])
+    assert calls == {}

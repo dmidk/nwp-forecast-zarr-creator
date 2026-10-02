@@ -16,16 +16,14 @@ from .config_ig import DATA_COLLECTION as IG_DATA_COLLECTION
 from .config_ig import PROJECTION_IDENTIFIER as IG_PROJECTION_IDENTIFIER
 from .config_ig import PROJECTION_WKT as IG_PROJECTION_WKT
 from .grib_definitions import set_local_eccodes_definitions_path
-from .pipeline.cli_args import T_ANALYSIS_HELP, t_analysis_arg
-from .read_source import read_level_type_data
-from .settings import (
-    DEFAULT_DST_ZARR_OUTPUT_PATH,
-    DEFAULT_MEMBER_ID,
-    DEFAULT_REFS_ROOT_PATH,
-    LATEST,
-    dest_profile,
-    format_output_path,
+from .pipeline.cli_args import (
+    T_ANALYSIS_HELP,
+    add_settings_arguments,
+    settings_from_args,
+    t_analysis_arg,
 )
+from .read_source import read_level_type_data
+from .settings import LATEST, Settings, dest_profile, format_output_path, require_utc
 from .write_zarr import write_output_zarrs
 
 
@@ -40,6 +38,7 @@ class _HelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
+SUITE_NAMES = ("ig", "dini")
 
 set_local_eccodes_definitions_path()
 
@@ -67,41 +66,9 @@ def _setup_argparse():
 
     argparser.add_argument("--log-file", default=None, help="The file to log to")
 
-    argparser.add_argument(
-        "--suite-name",
-        help="The suite with corresponding config file to use (e.g. 'ig', 'dini', etc.)",
-        choices=["ig", "dini"],
-        default="dini",
-    )
-
-    # Settings overrides (1:1 with env vars; explicit flag > env > default).
-    # Only the options used by conversion are listed here; the full set is
-    # available on the `run` subcommand.
-    argparser.add_argument(
-        "--refs-root-path",
-        default=None,
-        help="Directory the index/refs files were written to "
-        f"(env: REFS_ROOT_PATH, default: {DEFAULT_REFS_ROOT_PATH})",
-    )
-    argparser.add_argument(
-        "--member-id",
-        default=None,
-        help="Ensemble member id in the GRIB file names "
-        f"(env: MEMBER_ID, default: {DEFAULT_MEMBER_ID})",
-    )
-    argparser.add_argument(
-        "--dst-zarr-output-path",
-        default=None,
-        help="Zarr output location, local or s3://, as a format string with "
-        "{suite_name}, {member}, {t_analysis} and {dataset_id} placeholders "
-        f"(env: DST_ZARR_OUTPUT_PATH, default: {DEFAULT_DST_ZARR_OUTPUT_PATH})",
-    )
-    argparser.add_argument(
-        "--dest-profile",
-        default=None,
-        help="AWS profile for writing the output, resolved from ~/.aws "
-        "(env: DST_AWS_PROFILE, falls back to AWS_PROFILE)",
-    )
+    # Settings overrides (1:1 with env vars; explicit flag > env > default),
+    # shared with the other entry points.
+    add_settings_arguments(argparser)
 
     return argparser
 
@@ -132,17 +99,23 @@ def cli(argv=None):
     logger.remove()
     logger.add(sys.stderr, level=args.log_level.upper())
 
-    from .settings import load_settings
+    settings = settings_from_args(args)
+    if settings.suite_name not in SUITE_NAMES:
+        argparser.error(
+            f"unsupported suite name {settings.suite_name!r} "
+            f"(choose from {', '.join(SUITE_NAMES)})"
+        )
+    convert(args.t_analysis, settings)
 
-    settings = load_settings()
-    if args.refs_root_path is not None:
-        settings.refs_root_path = args.refs_root_path
-    if args.member_id is not None:
-        settings.member_id = args.member_id
-    if args.dst_zarr_output_path is not None:
-        settings.dst_zarr_output_path = args.dst_zarr_output_path
-    if args.dest_profile is not None:
-        settings.dst_aws_profile = args.dest_profile
+
+def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
+    """Convert the refs of one analysis time to the output zarr datasets.
+
+    Reads the refs from ``settings.refs_root_path`` and writes one zarr
+    dataset per part of the suite's data collection (``settings.suite_name``)
+    to ``settings.dst_zarr_output_path``. Logging is configured by the caller.
+    """
+    t_analysis = require_utc(t_analysis)
 
     if "{t_analysis}" not in settings.dst_zarr_output_path:
         logger.info(
@@ -150,16 +123,16 @@ def cli(argv=None):
             "each run overwrites the previous output."
         )
 
-    if args.suite_name == "ig":
+    if settings.suite_name == "ig":
         data_collection = IG_DATA_COLLECTION
         projection_identifier = IG_PROJECTION_IDENTIFIER
         projection_wkt = IG_PROJECTION_WKT
-    elif args.suite_name == "dini":
+    elif settings.suite_name == "dini":
         data_collection = DINI_DATA_COLLECTION
         projection_identifier = DINI_PROJECTION_IDENTIFIER
         projection_wkt = DINI_PROJECTION_WKT
     else:
-        raise ValueError(f"Unsupported suite name: {args.suite_name}")
+        raise ValueError(f"Unsupported suite name: {settings.suite_name}")
 
     parts = {}
     for part_id, part_details in data_collection.items():
@@ -170,7 +143,7 @@ def cli(argv=None):
             level_name_mapping = level_details.get("level_name_mapping", None)
 
             ds_level_type = read_level_type_data(
-                t_analysis=args.t_analysis,
+                t_analysis=t_analysis,
                 level_type=level_type,
                 projection_identifier=projection_identifier,
                 projection_wkt=projection_wkt,
@@ -254,9 +227,9 @@ def cli(argv=None):
             ds=ds_part,
             output_path=format_output_path(
                 settings.dst_zarr_output_path,
-                suite_name=args.suite_name,
+                suite_name=settings.suite_name,
                 member="control",
-                t_analysis=args.t_analysis,
+                t_analysis=t_analysis,
                 dataset_id=part_id,
             ),
             rechunk_to=rechunk_to,

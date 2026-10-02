@@ -74,10 +74,9 @@ def mark_refs_done(
 
 def _run_conversion(t_analysis: datetime.datetime, settings: Settings) -> None:
     # Lazy import: keeps this module side-effect free and patchable in tests.
-    from ..__main__ import cli as convert
+    from ..__main__ import convert
 
-    t_str = require_utc(t_analysis).isoformat()
-    convert(["--t_analysis", t_str, "--suite-name", settings.suite_name])
+    convert(t_analysis, settings)
 
 
 def process_one(
@@ -232,6 +231,15 @@ def main(argv=None) -> None:
     logger.add(sys.stderr, level=args.log_level.upper())
 
     settings = settings_from_args(args)
+    from ..__main__ import SUITE_NAMES
+
+    # Fail before indexing: the conversion retry loop would otherwise retry
+    # an unsupported suite forever.
+    if settings.suite_name not in SUITE_NAMES:
+        parser.error(
+            f"unsupported suite name {settings.suite_name!r} "
+            f"(choose from {', '.join(SUITE_NAMES)})"
+        )
     logger.info(f"SRC_GRIB_ROOT_URI: {settings.src_grib_root_uri}")
     logger.info(f"REFS_ROOT_PATH: {settings.refs_root_path}")
     logger.info(f"SRC_GRIB_TEMP_PATH: {settings.src_grib_temp_path or 'not set'}")
