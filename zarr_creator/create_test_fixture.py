@@ -39,6 +39,10 @@ from loguru import logger
 
 from . import storage
 from .settings import (
+    DEFAULT_MEMBER_ID,
+    DEFAULT_SUITE_NAME,
+    FILE_TYPES,
+    compute_analysis_time,
     describe_source_auth,
     expected_grib_filenames,
     refs_dir_name,
@@ -46,12 +50,9 @@ from .settings import (
 )
 
 DEFAULT_SOURCE_URI = "s3://harmonie-data/ml"  # DINI path; IG uses s3://harmonie-data/ig
-DEFAULT_SUITE_NAME = "dini"
 VALID_SUITES = ("dini", "ig")
 DEFAULT_FIXTURE_BUCKET = "uwcw-sample-grib2zarr-conversion-datasets"
 DEFAULT_MAX_HOUR = 2
-DEFAULT_MEMBER_ID = "CONTROL__dmi"
-DEFAULT_FILE_TYPES = ("sf", "pl")
 AUTO_LAG_HOURS = 3
 AUTO_LAG_STEP_HOURS = 3
 MAX_AUTO_ATTEMPTS = 8
@@ -68,15 +69,12 @@ def candidate_times(
     attempts: int = MAX_AUTO_ATTEMPTS,
 ) -> list[datetime.datetime]:
     """Candidate analysis times, newest first (mirrors download script)."""
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=datetime.timezone.utc)
-    out = []
-    for attempt in range(attempts):
-        lag = datetime.timedelta(hours=AUTO_LAG_HOURS + attempt * AUTO_LAG_STEP_HOURS)
-        epoch = int((now - lag).timestamp())
-        rounded = epoch // (3 * 3600) * (3 * 3600)
-        out.append(datetime.datetime.fromtimestamp(rounded, tz=datetime.timezone.utc))
-    return out
+    return [
+        compute_analysis_time(
+            now, lag_hours=AUTO_LAG_HOURS + attempt * AUTO_LAG_STEP_HOURS
+        )
+        for attempt in range(attempts)
+    ]
 
 
 def is_complete(
@@ -271,7 +269,7 @@ def create_test_fixture(
     suite_name: str = DEFAULT_SUITE_NAME,
     member_id: str = DEFAULT_MEMBER_ID,
     max_hour: int = DEFAULT_MAX_HOUR,
-    file_types: tuple[str, ...] = DEFAULT_FILE_TYPES,
+    file_types: tuple[str, ...] = FILE_TYPES,
     source_profile: str | None = None,
     dest_profile: str | None = None,
     src_anon: bool = False,
@@ -440,7 +438,7 @@ def main(argv=None) -> str:
         "--file-types",
         default=None,
         help="Space-separated GRIB file types to include "
-        f"(env: FILE_TYPES, default: {' '.join(DEFAULT_FILE_TYPES)!r})",
+        f"(env: FILE_TYPES, default: {' '.join(FILE_TYPES)!r})",
     )
     parser.add_argument(
         "--source-profile",
@@ -499,7 +497,7 @@ def main(argv=None) -> str:
     file_types = (
         tuple(args.file_types.split())
         if args.file_types
-        else tuple(os.environ.get("FILE_TYPES", " ".join(DEFAULT_FILE_TYPES)).split())
+        else tuple(os.environ.get("FILE_TYPES", " ".join(FILE_TYPES)).split())
     )
     source_profile = args.source_profile or os.environ.get(
         "SRC_AWS_PROFILE", os.environ.get("AWS_PROFILE")
