@@ -179,23 +179,16 @@ def test_auth_error_hint_ignores_non_auth_errors():
     assert storage.auth_error_hint(FileNotFoundError("missing"), anon=True) is None
 
 
-def test_show_file_bar_only_for_remote():
-    s3fs = pytest.importorskip("s3fs")
-    fs_s3 = s3fs.S3FileSystem(anon=True)
-    assert storage._show_file_bar(fs_s3)
-    fs_local, _ = storage.resolve_fs("/tmp/whatever")
-    assert not storage._show_file_bar(fs_local)
-    fs_mem, _ = storage.resolve_fs("memory://whatever")
-    assert not storage._show_file_bar(fs_mem)
+def test_upload_tree_object_store_uses_one_put_and_no_makedirs(tmp_path, monkeypatch):
+    """Upload in one ``put`` call; never ``makedirs`` on an object store.
 
-
-def test_upload_to_s3_uses_small_chunks_for_progress(tmp_path, monkeypatch):
-    """s3fs' 50MiB default parts stall the per-file bar; assert override."""
+    s3fs' ``makedirs`` tries to create the bucket when it can't see it.
+    """
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.bin").write_bytes(b"x" * 100)
-
-    seen = {}
+    (src / "b.bin").write_bytes(b"b")
+    (src / "a.bin").write_bytes(b"a")
+    puts = []
 
     class FakeS3:
         protocol = "s3"
@@ -203,14 +196,29 @@ def test_upload_to_s3_uses_small_chunks_for_progress(tmp_path, monkeypatch):
         def exists(self, path):
             return False
 
-        def put_file(self, src, dst, callback=None, **kwargs):
-            seen.update(kwargs)
-            seen["callback"] = callback
+        def makedirs(self, path, exist_ok=False):
+            raise AssertionError("makedirs must not be called on an object store")
+
+        def put(self, lpaths, rpaths, callback=None):
+            puts.append((lpaths, rpaths))
 
     monkeypatch.setattr(
-        storage, "resolve_fs", lambda url, profile=None, anon=False: (FakeS3(), "dest")
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (FakeS3(), "b/dest"),
     )
-    uploaded = storage.upload_tree(str(src), "s3://bucket/dest")
-    assert uploaded == ["s3://bucket/dest/a.bin"]
-    assert seen["chunksize"] == storage._S3_PUT_CHUNKSIZE
-    assert seen["callback"] is not None
+    uploaded = storage.upload_tree(str(src), "s3://b/dest/")
+    assert uploaded == ["s3://b/dest/a.bin", "s3://b/dest/b.bin"]
+    assert puts == [
+        ([str(src / "a.bin"), str(src / "b.bin")], ["b/dest/a.bin", "b/dest/b.bin"])
+    ]
+
+
+def test_upload_tree_file_url_creates_directory(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("a")
+    dest = tmp_path / "new" / "dst"
+    uploaded = storage.upload_tree(str(src), f"file://{dest}")
+    assert uploaded == [f"file://{dest}/a.txt"]
+    assert (dest / "a.txt").read_text() == "a"

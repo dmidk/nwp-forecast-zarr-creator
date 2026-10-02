@@ -16,14 +16,9 @@ import sys
 import fsspec
 from fsspec.callbacks import TqdmCallback
 from fsspec.core import strip_protocol
+from fsspec.implementations.local import LocalFileSystem
 from fsspec.utils import get_protocol
 from loguru import logger
-from tqdm import tqdm
-
-
-def _progress(desc: str, total: int):
-    """File-count progress bar (suppressed when stderr is not a TTY)."""
-    return tqdm(desc=desc, total=total, unit="files", disable=not sys.stderr.isatty())
 
 
 def _progress_callback(desc: str) -> TqdmCallback:
@@ -33,45 +28,6 @@ def _progress_callback(desc: str) -> TqdmCallback:
     """
     return TqdmCallback(
         tqdm_kwargs={"desc": desc, "unit": "files", "disable": not sys.stderr.isatty()}
-    )
-
-
-# s3fs uploads in 50MiB parts by default, so the per-file bar would sit at
-# 0% for minutes on slow links. Smaller parts stream progress more often;
-# S3 requires >=5MiB per part (except the last).
-_S3_PUT_CHUNKSIZE = 8 * 1024 * 1024
-
-
-def _protocols(fs) -> set:
-    protocol = fs.protocol
-    return set(protocol) if isinstance(protocol, (tuple, list)) else {protocol}
-
-
-def _is_local_copy(fs) -> bool:
-    """Whether to copy via the local filesystem (vs fsspec put/get)."""
-    return bool(_protocols(fs) & {"file", "local"})
-
-
-def _show_file_bar(fs) -> bool:
-    """Whether a per-file byte bar is useful (remote transfers only).
-
-    Local and memory transfers don't report byte progress, so a bar would
-    sit at 0% — the outer file-count bar already covers those.
-    """
-    return not bool(_protocols(fs) & {"file", "local", "memory"})
-
-
-def _file_bar(desc: str):
-    """Per-file byte progress bar (suppressed when stderr is not a TTY)."""
-    return TqdmCallback(
-        tqdm_kwargs={
-            "desc": desc,
-            "unit": "B",
-            "unit_scale": True,
-            "unit_divisor": 1024,
-            "leave": False,
-            "disable": not sys.stderr.isatty(),
-        }
     )
 
 
@@ -185,45 +141,30 @@ def upload_tree(
 ) -> list[str]:
     """Upload all files under ``local_dir`` (flat) to ``dest_root_uri``."""
     fs, dest_path = resolve_fs(dest_root_uri, profile)
-    uploaded = []
-    is_local = _is_local_copy(fs)
-    show_bar = _show_file_bar(fs)
-    # Smaller parts than s3fs' 50MiB default so the per-file bar advances
-    # steadily; only s3fs understands this kwarg.
-    put_kwargs = {"chunksize": _S3_PUT_CHUNKSIZE} if "s3" in _protocols(fs) else {}
-    if is_local:
-        os.makedirs(dest_path, exist_ok=True)
+    dest_root_uri = dest_root_uri.rstrip("/")
     names = sorted(
         name
         for name in os.listdir(local_dir)
         if os.path.isfile(os.path.join(local_dir, name))
     )
-    with _progress(f"Uploading to {dest_root_uri}", total=len(names)) as bar:
-        for name in names:
-            src = os.path.join(local_dir, name)
-            if is_local:
-                dst = os.path.join(dest_path, name)
-                if not overwrite and os.path.exists(dst):
-                    raise FileExistsError(f"Destination already exists: {dst}")
-                shutil.copy2(src, dst)
-                uploaded.append(dst)
-            else:
-                dst_path = dest_path.rstrip("/") + "/" + name
-                if not overwrite and fs.exists(dst_path):
-                    raise FileExistsError(
-                        f"Destination already exists: {dest_root_uri}/{name}"
-                    )
-                if show_bar:
-                    callback = _file_bar(f"↑ {name}")
-                    try:
-                        fs.put_file(src, dst_path, callback=callback, **put_kwargs)
-                    finally:
-                        callback.close()
-                else:
-                    fs.put_file(src, dst_path, **put_kwargs)
-                uploaded.append(f"{dest_root_uri.rstrip('/')}/{name}")
-            bar.update(1)
-    return uploaded
+    dst_paths = [dest_path.rstrip("/") + "/" + name for name in names]
+    if not overwrite:
+        for name, dst_path in zip(names, dst_paths):
+            if fs.exists(dst_path):
+                raise FileExistsError(
+                    f"Destination already exists: {dest_root_uri}/{name}"
+                )
+    if isinstance(fs, LocalFileSystem):
+        # Object stores need no directories, and s3fs' makedirs would try to
+        # create the bucket if it can't see it.
+        fs.makedirs(dest_path, exist_ok=True)
+    with _progress_callback(f"Uploading to {dest_root_uri}") as callback:
+        fs.put(
+            [os.path.join(local_dir, name) for name in names],
+            dst_paths,
+            callback=callback,
+        )
+    return [f"{dest_root_uri}/{name}" for name in names]
 
 
 def cleanup_temp(path: str) -> None:
