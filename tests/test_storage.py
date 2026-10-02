@@ -33,6 +33,21 @@ def test_s3_verify_ssl_env(monkeypatch, value, verify):
     assert fs.client_kwargs.get("verify", True) is verify
 
 
+@pytest.mark.parametrize(
+    "uri, local",
+    [
+        ("/mnt/data/ml", True),
+        ("relative/ml", True),
+        ("file:///mnt/data/ml", True),
+        ("local:///mnt/data/ml", True),
+        ("s3://bucket/ml", False),
+        ("memory://bucket/ml", False),
+    ],
+)
+def test_is_local_uri(uri, local):
+    assert storage.is_local_uri(uri) is local
+
+
 def test_exists_and_find_missing_local(tmp_path):
     a = str(tmp_path / "a")
     _write(a)

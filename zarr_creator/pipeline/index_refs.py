@@ -40,10 +40,6 @@ from .cli_args import (
 )
 
 
-def _is_s3_uri(uri: str) -> bool:
-    return uri.startswith("s3://")
-
-
 def _run_index(inputs: list[str], nprocs: int = 2) -> None:
     import gribscan.tools
 
@@ -86,7 +82,7 @@ def build_indexes_and_refs(
     profile = source_profile(settings)
     anon = settings.src_anon
 
-    if _is_s3_uri(settings.src_grib_root_uri):
+    if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(f"S3 source auth: {describe_source_auth(anon, profile)}")
 
     filenames = expected_grib_filenames(
@@ -113,13 +109,14 @@ def build_indexes_and_refs(
         )
         src_dir = _download_with_hint(urls, settings, profile, anon)
     else:
-        protocol, src_dir = split_protocol(settings.src_grib_root_uri)
-        if protocol not in (None, "file", "local"):
+        if not storage.is_local_uri(settings.src_grib_root_uri):
             raise ValueError(
                 f"SRC_GRIB_TEMP_PATH must be set to read from "
                 f"{settings.src_grib_root_uri}: gribscan can only index files on "
                 "the local filesystem."
             )
+        # gribscan needs a plain path, so drop any ``file://`` prefix.
+        _, src_dir = split_protocol(settings.src_grib_root_uri)
         logger.info(f"No staging path set, indexing directly from {src_dir}")
 
     refs_dir = refs_dir_for(t_analysis, settings)
@@ -133,11 +130,8 @@ def build_indexes_and_refs(
         by_type[file_type].append(name)
 
     for file_type in FILE_TYPES:
-        names = by_type[file_type]
-        if _is_s3_uri(src_dir):
-            inputs = [storage.join(src_dir, name) for name in names]
-        else:
-            inputs = [os.path.join(src_dir, name) for name in names]
+        # src_dir is always local here: non-local sources must be staged.
+        inputs = [os.path.join(src_dir, name) for name in by_type[file_type]]
         logger.info(f"Indexing {file_type} files ({len(inputs)} files)")
         _run_index(inputs)
         index_files = [f"{path}.index" for path in inputs]
