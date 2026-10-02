@@ -136,15 +136,9 @@ def poll_once(
     t_analysis = compute_analysis_time(
         now or datetime.datetime.now(datetime.timezone.utc)
     )
-    if refs_done(t_analysis, settings):
-        logger.info(
-            f"Analysis time {t_analysis.isoformat()} is already processed "
-            f"({refs_dir_for(t_analysis, settings)}). "
-            f"Sleeping for {already_done_sleep}s..."
-        )
-        return already_done_sleep
     try:
-        process_one(t_analysis, settings, **process_kwargs)
+        if process_one(t_analysis, settings, **process_kwargs) == "skipped":
+            return already_done_sleep
     except FileNotFoundError as exc:
         # GRIBs arrive hour by hour, so an incomplete analysis time is the
         # normal state until the last file lands (run.sh just retried).
