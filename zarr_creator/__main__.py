@@ -23,7 +23,6 @@ from .settings import (
     DEFAULT_MEMBER_ID,
     DEFAULT_REFS_ROOT_PATH,
     LATEST,
-    dest_profile,
     format_output_path,
 )
 from .write_zarr import write_output_zarrs
@@ -260,7 +259,7 @@ def cli(argv=None):
                 dataset_id=part_id,
             ),
             rechunk_to=rechunk_to,
-            profile=dest_profile(settings),
+            profile=settings.dst_aws_profile,
         )
 
 

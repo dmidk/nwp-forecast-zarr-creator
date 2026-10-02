@@ -30,7 +30,6 @@ from ..settings import (
     expected_grib_filenames,
     refs_dir_for,
     require_utc,
-    source_profile,
 )
 from .cli_args import (
     T_ANALYSIS_HELP,
@@ -83,7 +82,7 @@ def build_indexes_and_refs(
 ) -> str:
     """Build indexes and refs for one analysis time; return the refs dir."""
     t_analysis = require_utc(t_analysis)
-    profile = source_profile(settings)
+    profile = settings.src_aws_profile
     anon = settings.src_anon
 
     if _is_s3_uri(settings.src_grib_root_uri):

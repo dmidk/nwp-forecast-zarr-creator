@@ -106,20 +106,6 @@ def load_settings() -> Settings:
     )
 
 
-def source_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for source reads.
-
-    Precedence: explicit CLI flag > ``SRC_AWS_PROFILE`` > ``AWS_PROFILE``.
-    Endpoint/keys/region resolve from ``~/.aws`` via the named profile.
-    """
-    return explicit or settings.src_aws_profile
-
-
-def dest_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for destination writes (same chain, ``DST_``)."""
-    return explicit or settings.dst_aws_profile
-
-
 def describe_source_auth(anon: bool, profile: str | None) -> str:
     """One-line description of how S3 source reads authenticate (for logs)."""
     if anon:
