@@ -10,6 +10,7 @@ via botocore/s3fs.
 """
 
 import os
+import posixpath
 import shutil
 import sys
 
@@ -95,18 +96,27 @@ def exists(url: str, profile: str | None = None, anon: bool = False) -> bool:
 
 
 def find_missing(
-    urls: list[str], profile: str | None = None, anon: bool = False
+    root_uri: str,
+    names: list[str],
+    profile: str | None = None,
+    anon: bool = False,
 ) -> list[str]:
-    """Return the subset of ``urls`` that do not exist."""
-    if not urls:
+    """Return the ``names`` (relative to ``root_uri``) that do not exist.
+
+    Lists ``root_uri`` once instead of checking every name: s3fs sends the
+    common prefix of ``names`` as a single, uncached LIST request (so new
+    files show up in long-running watch loops); other filesystems ignore
+    it. A missing root means all names are missing; auth errors propagate.
+    """
+    if not names:
         return []
-    # Re-resolve per URL so mixed-protocol lists still work.
-    missing = []
-    for url in urls:
-        fs_u, path_u = resolve_fs(url, profile, anon)
-        if not fs_u.exists(path_u):
-            missing.append(url)
-    return missing
+    fs, root = resolve_fs(root_uri, profile, anon)
+    try:
+        found = fs.find(root, prefix=os.path.commonprefix(names))
+    except FileNotFoundError:
+        found = []
+    present = {posixpath.relpath(path, root) for path in found}
+    return [name for name in names if name not in present]
 
 
 def join(root_uri: str, *parts: str) -> str:

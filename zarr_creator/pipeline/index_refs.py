@@ -94,7 +94,9 @@ def build_indexes_and_refs(
     )
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
     try:
-        missing = storage.find_missing(urls, profile, anon)
+        missing = storage.find_missing(
+            settings.src_grib_root_uri, filenames, profile, anon
+        )
     except Exception as exc:
         hint = storage.auth_error_hint(exc, anon=anon)
         if hint is not None:
@@ -102,7 +104,8 @@ def build_indexes_and_refs(
         raise
     if missing:
         raise FileNotFoundError(
-            f"{len(missing)} expected GRIB file(s) missing for analysis time "
+            f"{len(missing)} of {len(filenames)} expected GRIB file(s) missing "
+            f"from {settings.src_grib_root_uri} for analysis time "
             f"{t_analysis.isoformat()}: {missing[:5]}"
             + (" ..." if len(missing) > 5 else "")
         )

@@ -89,9 +89,9 @@ def test_create_dry_run_uploads_nothing():
         dry_run=True,
     )
     assert prefix == "memory://cf-dry-dst/dini/2025-03-02T0600Z"
-    assert storage.find_missing([f"{prefix}/ml/x", f"{prefix}/README.md"]) == [
-        f"{prefix}/ml/x",
-        f"{prefix}/README.md",
+    assert storage.find_missing(prefix, ["ml/x", "README.md"]) == [
+        "ml/x",
+        "README.md",
     ]
 
 
@@ -105,12 +105,13 @@ def test_create_upload_and_verify():
     )
     assert (
         storage.find_missing(
+            prefix,
             [
-                f"{prefix}/ml/fc2025030206+000CONTROL__dmi_sf",
-                f"{prefix}/ml/fc2025030206+001CONTROL__dmi_pl",
-                f"{prefix}/README.md",
-                f"{prefix}/manifest.json",
-            ]
+                "ml/fc2025030206+000CONTROL__dmi_sf",
+                "ml/fc2025030206+001CONTROL__dmi_pl",
+                "README.md",
+                "manifest.json",
+            ],
         )
         == []
     )
@@ -176,9 +177,10 @@ def test_dest_dir_stage_only(tmp_path):
         f"fc2025030206+{h:03d}CONTROL__dmi_{t}" for h in (0, 1) for t in ("sf", "pl")
     )
     # nothing uploaded
+    meta = ["README.md", "manifest.json"]
     assert storage.find_missing(
-        ["memory://cf-local-dst/dini/2025-03-02T0600Z/ml/x"]
-    ) == ["memory://cf-local-dst/dini/2025-03-02T0600Z/ml/x"]
+        "memory://cf-local-dst/dini/2025-03-02T0600Z", meta
+    ) == (meta)
     # second run skips existing files without error
     cf.create_test_fixture(
         t_analysis=_utc(2025, 3, 2, 6),
