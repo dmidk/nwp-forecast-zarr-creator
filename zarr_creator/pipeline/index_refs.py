@@ -83,7 +83,7 @@ def build_indexes_and_refs(
     anon = settings.src_anon
 
     if not storage.is_local_uri(settings.src_grib_root_uri):
-        logger.info(f"S3 source auth: {describe_source_auth(anon, profile)}")
+        logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
     filenames = expected_grib_filenames(
         t_analysis, settings.max_hour, settings.member_id
