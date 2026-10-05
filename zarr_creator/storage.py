@@ -2,7 +2,7 @@
 
 Single place where URLs become filesystems. All callers pass opaque URLs
 (``s3://bucket/prefix/...`` or local paths) and let fsspec dispatch —
-no ``is_s3`` branching outside this module.
+no ``is_s3`` branching outside this module (use :func:`is_local_uri`).
 
 S3 authentication is profile-only: pass ``profile=<name>`` and endpoint,
 keys, and region resolve from ``~/.aws/config`` + ``~/.aws/credentials``
@@ -16,6 +16,7 @@ import sys
 
 import fsspec
 from fsspec.callbacks import TqdmCallback
+from fsspec.utils import get_protocol
 from loguru import logger
 from tqdm import tqdm
 
@@ -87,6 +88,11 @@ def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
             kwargs["client_kwargs"] = {"verify": False}
         return fsspec.url_to_fs(url, **kwargs)
     return fsspec.url_to_fs(url)
+
+
+def is_local_uri(uri: str) -> bool:
+    """Whether ``uri`` is on the local filesystem (plain path or ``file://``)."""
+    return get_protocol(uri) in ("file", "local")
 
 
 def exists(url: str, profile: str | None = None, anon: bool = False) -> bool:

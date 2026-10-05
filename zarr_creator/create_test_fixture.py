@@ -280,7 +280,7 @@ def create_test_fixture(
         raise ValueError(
             f"suite_name must be one of {VALID_SUITES}, got: {suite_name!r}"
         )
-    if source_uri.startswith("s3://"):
+    if not storage.is_local_uri(source_uri):
         logger.info(f"S3 source auth: {describe_source_auth(src_anon, source_profile)}")
     try:
         t_analysis = resolve_analysis_time(
