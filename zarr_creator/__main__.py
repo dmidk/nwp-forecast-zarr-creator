@@ -23,7 +23,7 @@ from .pipeline.cli_args import (
     t_analysis_arg,
 )
 from .read_source import read_level_type_data
-from .settings import LATEST, Settings, dest_profile, format_output_path, require_utc
+from .settings import LATEST, Settings, format_output_path, require_utc
 from .write_zarr import write_output_zarrs
 
 
@@ -227,7 +227,7 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
                 dataset_id=part_id,
             ),
             rechunk_to=rechunk_to,
-            profile=dest_profile(settings),
+            profile=settings.dst_aws_profile,
         )
 
 

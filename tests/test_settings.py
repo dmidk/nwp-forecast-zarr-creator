@@ -95,19 +95,48 @@ def test_profile_fallback_matrix(monkeypatch):
     for var in ("SRC_AWS_PROFILE", "DST_AWS_PROFILE", "AWS_PROFILE"):
         monkeypatch.delenv(var, raising=False)
     cfg = s.load_settings()
-    assert s.source_profile(cfg) is None
-    assert s.dest_profile(cfg) is None
+    assert cfg.src_aws_profile is None
+    assert cfg.dst_aws_profile is None
 
     monkeypatch.setenv("AWS_PROFILE", "base")
     cfg = s.load_settings()
-    assert s.source_profile(cfg) == "base"
-    assert s.dest_profile(cfg) == "base"
+    assert cfg.src_aws_profile == "base"
+    assert cfg.dst_aws_profile == "base"
 
     monkeypatch.setenv("SRC_AWS_PROFILE", "src")
     cfg = s.load_settings()
-    assert s.source_profile(cfg) == "src"
-    assert s.dest_profile(cfg) == "base"
-    assert s.source_profile(cfg, explicit="cli") == "cli"
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "base"
+
+    monkeypatch.setenv("DST_AWS_PROFILE", "dst")
+    cfg = s.load_settings()
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "dst"
+
+
+def test_profile_cli_flags_override_env(monkeypatch):
+    import argparse
+
+    from zarr_creator.pipeline.cli_args import (
+        add_settings_arguments,
+        settings_from_args,
+    )
+
+    monkeypatch.setenv("SRC_AWS_PROFILE", "src")
+    monkeypatch.setenv("DST_AWS_PROFILE", "dst")
+    parser = argparse.ArgumentParser()
+    add_settings_arguments(parser)
+
+    cfg = settings_from_args(parser.parse_args([]))
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "dst"
+
+    args = parser.parse_args(
+        ["--source-profile", "cli-src", "--dest-profile", "cli-dst"]
+    )
+    cfg = settings_from_args(args)
+    assert cfg.src_aws_profile == "cli-src"
+    assert cfg.dst_aws_profile == "cli-dst"
 
 
 def test_src_anon_parsing(monkeypatch):
