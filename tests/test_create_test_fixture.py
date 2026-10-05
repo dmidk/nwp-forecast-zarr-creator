@@ -48,6 +48,22 @@ def test_invalid_suite_rejected():
         )
 
 
+def test_candidate_times_follow_analysis_interval(monkeypatch):
+    now = _utc(2025, 3, 2, 7, 30)
+    # lags of 3, 6 and 9 hours, floored to the (default) 3-hour grid
+    assert cf.candidate_times(now, attempts=3) == [
+        _utc(2025, 3, 2, 3),
+        _utc(2025, 3, 2, 0),
+        _utc(2025, 3, 1, 21),
+    ]
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
+    assert cf.candidate_times(now, attempts=3) == [
+        _utc(2025, 3, 2, 4),
+        _utc(2025, 3, 2, 1),
+        _utc(2025, 3, 1, 22),
+    ]
+
+
 def test_resolve_explicit_complete():
     _plant_source("memory://cf-src", _utc(2025, 3, 2, 6))
     t = cf.resolve_analysis_time(
