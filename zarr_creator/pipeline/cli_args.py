@@ -14,6 +14,7 @@ from ..settings import (
     DEFAULT_SRC_GRIB_ROOT_URI,
     DEFAULT_SUITE_NAME,
     LATEST,
+    SUITE_NAMES,
     Settings,
     load_settings,
     resolve_t_analysis,
@@ -68,8 +69,8 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--suite-name",
         default=None,
-        help="Suite to process, e.g. dini or ig "
-        f"(env: SUITE_NAME, default: {DEFAULT_SUITE_NAME})",
+        choices=SUITE_NAMES,
+        help=f"Suite to process (env: SUITE_NAME, default: {DEFAULT_SUITE_NAME})",
     )
     parser.add_argument(
         "--src-grib-temp-path",

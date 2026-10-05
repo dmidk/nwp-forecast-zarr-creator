@@ -55,6 +55,16 @@ def test_env_overrides(monkeypatch):
     assert cfg.dst_zarr_output_path == "s3://out/{suite_name}/{dataset_id}.zarr"
 
 
+@pytest.mark.parametrize("suite", ["nope", "DINI"])
+def test_unsupported_suite_name_rejected(monkeypatch, suite):
+    monkeypatch.setenv("SUITE_NAME", suite)
+    with pytest.raises(ValueError, match="SUITE_NAME must be one of dini, ig"):
+        s.load_settings()
+    # Also when the Settings are built directly, e.g. for process_one.
+    with pytest.raises(ValueError, match="SUITE_NAME"):
+        s.Settings(suite_name=suite)
+
+
 def test_deprecated_alias_warns(monkeypatch):
     monkeypatch.delenv("SRC_GRIB_ROOT_URI", raising=False)
     monkeypatch.delenv("SRC_GRIB_ROOT", raising=False)

@@ -331,8 +331,17 @@ def test_main_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
     assert s.suite_name == "ig"
 
 
-def test_main_rejects_unsupported_suite_before_indexing(tmp_path, monkeypatch):
+@pytest.mark.parametrize("suite", ["nope", "DINI"])
+def test_main_rejects_unsupported_suite_before_indexing(tmp_path, monkeypatch, suite):
     calls = _stub_main(monkeypatch, tmp_path)
     with pytest.raises(SystemExit):
-        runner.main(["--suite-name", "nope"])
+        runner.main(["--suite-name", suite])
+    assert calls == {}
+
+
+def test_main_rejects_unsupported_suite_env_before_indexing(tmp_path, monkeypatch):
+    calls = _stub_main(monkeypatch, tmp_path)
+    monkeypatch.setenv("SUITE_NAME", "DINI")
+    with pytest.raises(ValueError, match="SUITE_NAME"):
+        runner.main([])
     assert calls == {}

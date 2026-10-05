@@ -231,15 +231,6 @@ def main(argv=None) -> None:
     logger.add(sys.stderr, level=args.log_level.upper())
 
     settings = settings_from_args(args)
-    from ..__main__ import SUITE_NAMES
-
-    # Fail before indexing: the conversion retry loop would otherwise retry
-    # an unsupported suite forever.
-    if settings.suite_name not in SUITE_NAMES:
-        parser.error(
-            f"unsupported suite name {settings.suite_name!r} "
-            f"(choose from {', '.join(SUITE_NAMES)})"
-        )
     logger.info(f"SRC_GRIB_ROOT_URI: {settings.src_grib_root_uri}")
     logger.info(f"REFS_ROOT_PATH: {settings.refs_root_path}")
     logger.info(f"SRC_GRIB_TEMP_PATH: {settings.src_grib_temp_path or 'not set'}")

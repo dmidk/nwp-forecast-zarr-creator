@@ -38,7 +38,6 @@ class _HelpFormatter(argparse.ArgumentDefaultsHelpFormatter):
 
 DEFAULT_FORECAST_DURATION = "PT3H"
 DEFAULT_CHUNKING = dict(time=54, x=300, y=260)
-SUITE_NAMES = ("ig", "dini")
 
 set_local_eccodes_definitions_path()
 
@@ -100,11 +99,6 @@ def cli(argv=None):
     logger.add(sys.stderr, level=args.log_level.upper())
 
     settings = settings_from_args(args)
-    if settings.suite_name not in SUITE_NAMES:
-        argparser.error(
-            f"unsupported suite name {settings.suite_name!r} "
-            f"(choose from {', '.join(SUITE_NAMES)})"
-        )
     convert(args.t_analysis, settings)
 
 
