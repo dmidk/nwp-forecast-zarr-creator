@@ -87,11 +87,8 @@ def is_complete(
     anon: bool = False,
 ) -> bool:
     """Check that all expected GRIB files exist for one analysis time."""
-    urls = [
-        storage.join(source_uri, name)
-        for name in expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
-    ]
-    return not storage.find_missing(urls, profile, anon)
+    names = expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
+    return not storage.find_missing(source_uri, names, profile, anon)
 
 
 def resolve_analysis_time(
@@ -323,10 +320,9 @@ def create_test_fixture(
         f"from {source_uri} to {prefix}"
     )
 
-    dest_urls = [f"{dest_ml}/{name}" for name in names] + [
-        f"{prefix}/README.md",
-        f"{prefix}/manifest.json",
-    ]
+    # Relative to ``prefix``.
+    dest_names = [f"ml/{name}" for name in names] + ["README.md", "manifest.json"]
+    dest_urls = [f"{prefix}/{name}" for name in dest_names]
     existing = [u for u in dest_urls if storage.exists(u, dest_profile)]
     if existing and not overwrite:
         raise FileExistsError(
@@ -381,7 +377,7 @@ def create_test_fixture(
         storage.upload_tree(grib_dir, dest_ml, dest_profile, overwrite=overwrite)
         storage.upload_tree(meta_dir, prefix, dest_profile, overwrite=overwrite)
 
-    still_missing = storage.find_missing(dest_urls, dest_profile)
+    still_missing = storage.find_missing(prefix, dest_names, dest_profile)
     if still_missing:
         raise RuntimeError(f"Upload verification failed, missing: {still_missing}")
     logger.info(f"Fixture ready at {prefix}")
