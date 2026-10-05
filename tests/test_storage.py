@@ -33,14 +33,30 @@ def test_s3_verify_ssl_env(monkeypatch, value, verify):
     assert fs.client_kwargs.get("verify", True) is verify
 
 
+@pytest.mark.parametrize(
+    "uri, local",
+    [
+        ("/mnt/data/ml", True),
+        ("relative/ml", True),
+        ("file:///mnt/data/ml", True),
+        ("local:///mnt/data/ml", True),
+        ("s3://bucket/ml", False),
+        ("memory://bucket/ml", False),
+    ],
+)
+def test_is_local_uri(uri, local):
+    assert storage.is_local_uri(uri) is local
+
+
 def test_exists_and_find_missing_local(tmp_path):
     a = str(tmp_path / "a")
     _write(a)
     assert storage.exists(a)
     assert not storage.exists(str(tmp_path / "nope"))
-    missing = storage.find_missing([a, str(tmp_path / "nope")])
-    assert missing == [str(tmp_path / "nope")]
-    assert storage.find_missing([]) == []
+    assert storage.find_missing(str(tmp_path), ["a", "nope"]) == ["nope"]
+    assert storage.find_missing(str(tmp_path), []) == []
+    # a missing root means everything is missing
+    assert storage.find_missing(str(tmp_path / "gone"), ["a"]) == ["a"]
 
 
 def test_exists_memory():
@@ -48,9 +64,38 @@ def test_exists_memory():
     fs.pipe("memory://test-exists/f", b"x")
     assert storage.exists("memory://test-exists/f")
     assert not storage.exists("memory://test-exists/missing")
-    assert storage.find_missing(
-        ["memory://test-exists/f", "memory://test-exists/missing"]
-    ) == ["memory://test-exists/missing"]
+    assert storage.find_missing("memory://test-exists", ["f", "missing"]) == ["missing"]
+    # names may include subdirectories of the root
+    fs.pipe("memory://test-exists/sub/g", b"x")
+    assert storage.find_missing("memory://test-exists", ["sub/g", "sub/h"]) == ["sub/h"]
+
+
+def test_find_missing_lists_once_with_common_prefix(monkeypatch):
+    calls = []
+
+    class FakeFS:
+        def find(self, path, **kwargs):
+            calls.append((path, kwargs))
+            return [f"{path}/fc2025030206+000x_sf"]
+
+    monkeypatch.setattr(
+        storage, "resolve_fs", lambda url, profile=None, anon=False: (FakeFS(), "b/ml")
+    )
+    names = ["fc2025030206+000x_sf", "fc2025030206+001x_sf"]
+    assert storage.find_missing("s3://b/ml", names) == ["fc2025030206+001x_sf"]
+    assert calls == [("b/ml", {"prefix": "fc2025030206+00"})]
+
+
+def test_find_missing_propagates_auth_errors(monkeypatch):
+    class DeniedFS:
+        def find(self, path, **kwargs):
+            raise PermissionError("Access Denied")
+
+    monkeypatch.setattr(
+        storage, "resolve_fs", lambda url, profile=None, anon=False: (DeniedFS(), "b")
+    )
+    with pytest.raises(PermissionError):
+        storage.find_missing("s3://b", ["x"])
 
 
 def test_download_memory_to_temp(tmp_path):
