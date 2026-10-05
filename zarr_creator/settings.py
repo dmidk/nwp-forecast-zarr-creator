@@ -15,7 +15,7 @@ name.
 import datetime
 import os
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import isodate
 
@@ -53,12 +53,10 @@ class Settings:
     dst_aws_profile: str | None = None
     # Unsigned S3 reads (public CI fixture bucket). Never used for writes.
     src_anon: bool = False
-    # Raw env snapshot for provenance/debugging (no secrets stored here).
-    _from_alias: bool = field(default=False, repr=False)
 
 
-def _resolve_src_root() -> tuple[str, bool]:
-    """Return (value, from_alias) for the GRIB source root URI."""
+def _resolve_src_root() -> str:
+    """Return the GRIB source root URI, accepting deprecated aliases."""
     for name in ("SRC_GRIB_ROOT_URI", "SRC_GRIB_ROOT", "SRC_GRIB_ROOT_PATH"):
         value = os.environ.get(name)
         if value:
@@ -68,14 +66,13 @@ def _resolve_src_root() -> tuple[str, bool]:
                     DeprecationWarning,
                     stacklevel=3,
                 )
-                return value, True
-            return value, False
-    return DEFAULT_SRC_GRIB_ROOT_URI, False
+            return value
+    return DEFAULT_SRC_GRIB_ROOT_URI
 
 
 def load_settings() -> Settings:
     """Load settings from environment variables."""
-    src_root, from_alias = _resolve_src_root()
+    src_root = _resolve_src_root()
 
     max_hour_raw = _getenv("MAX_HOUR", str(DEFAULT_MAX_HOUR))
     try:
@@ -102,22 +99,7 @@ def load_settings() -> Settings:
         or os.environ.get("AWS_PROFILE")
         or None,
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
-        _from_alias=from_alias,
     )
-
-
-def source_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for source reads.
-
-    Precedence: explicit CLI flag > ``SRC_AWS_PROFILE`` > ``AWS_PROFILE``.
-    Endpoint/keys/region resolve from ``~/.aws`` via the named profile.
-    """
-    return explicit or settings.src_aws_profile
-
-
-def dest_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for destination writes (same chain, ``DST_``)."""
-    return explicit or settings.dst_aws_profile
 
 
 def describe_source_auth(anon: bool, profile: str | None) -> str:
