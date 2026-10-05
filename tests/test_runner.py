@@ -300,11 +300,11 @@ def test_run_cli_rejects_naive_t_analysis(tmp_path, monkeypatch):
 def test_run_cli_forwards_settings_flags_to_conversion(tmp_path, monkeypatch):
     """``run`` flags reach the conversion, not just indexing (they used to be
     dropped because the conversion re-read its settings from the env)."""
-    import zarr_creator.__main__ as zc_main
+    import zarr_creator.convert as zc_convert
 
     seen = {}
     monkeypatch.setattr(runner, "build_indexes_and_refs", lambda t, s: None)
-    monkeypatch.setattr(zc_main, "convert", lambda t, s: seen.update(t=t, s=s))
+    monkeypatch.setattr(zc_convert, "convert", lambda t, s: seen.update(t=t, s=s))
     monkeypatch.delenv("SRC_GRIB_TEMP_PATH", raising=False)
     out = f"file://{tmp_path}/out/{{dataset_id}}.zarr"
     cli(

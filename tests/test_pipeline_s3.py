@@ -107,7 +107,7 @@ def test_s3_fixture_end_to_end(tmp_path):
     assert os.path.isdir(refs_dir)
     assert [f for f in os.listdir(refs_dir) if f.endswith(".json")] != []
 
-    from zarr_creator.__main__ import convert
+    from zarr_creator.convert import convert
 
     convert(t_analysis, settings)
     for part in ("single_levels", "pressure_levels", "height_levels"):

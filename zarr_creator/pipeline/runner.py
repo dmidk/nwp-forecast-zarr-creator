@@ -59,7 +59,7 @@ def mark_refs_done(
 
 def _run_conversion(t_analysis: datetime.datetime, settings: Settings) -> None:
     # Lazy import: keeps this module side-effect free and patchable in tests.
-    from ..__main__ import convert
+    from ..convert import convert
 
     convert(t_analysis, settings)
 
