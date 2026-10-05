@@ -52,7 +52,7 @@ def test_s3_auth_error_gets_remediation_hint(monkeypatch):
     class Fake403(Exception):
         response = {"Error": {"Code": "403"}}
 
-    def raise_403(urls, profile=None, anon=False):
+    def raise_403(*args, **kwargs):
         raise Fake403("An error occurred (403) when calling HeadObject: Forbidden")
 
     monkeypatch.setattr(index_refs.storage, "find_missing", raise_403)
@@ -126,27 +126,40 @@ def test_staging_used_when_set(tmp_path, monkeypatch):
     assert staged_with == [str(stage)]
 
 
-def test_s3_no_temp_warns_and_attempts(monkeypatch):
-    from loguru import logger
-
+def test_non_local_source_without_staging_raises(monkeypatch):
     settings = _settings(src_grib_root_uri="s3://bucket/ml")
-    monkeypatch.setattr(
-        index_refs.storage, "find_missing", lambda urls, profile=None, anon=False: []
-    )
+    monkeypatch.setattr(index_refs.storage, "find_missing", lambda *a, **k: [])
     indexed = []
     monkeypatch.setattr(
         index_refs, "_run_index", lambda inputs, nprocs=2: indexed.extend(inputs)
     )
-    monkeypatch.setattr(index_refs, "_run_build_refs", lambda *a, **k: None)
-    monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
-    messages = []
-    handler = logger.add(messages.append, format="{message}")
-    try:
+    with pytest.raises(ValueError, match="SRC_GRIB_TEMP_PATH must be set"):
         index_refs.build_indexes_and_refs(_utc(2025, 3, 2, 6), settings)
-    finally:
-        logger.remove(handler)
-    assert any("SRC_GRIB_TEMP_PATH" in m for m in messages)
-    assert indexed and indexed[0].startswith("s3://bucket/ml/")
+    assert indexed == []
+
+
+def test_file_url_source_indexed_in_place_as_plain_path(tmp_path, monkeypatch):
+    src = tmp_path / "ml"
+    src.mkdir()
+    t = _utc(2025, 3, 2, 6)
+    _touch_files(str(src), t)
+    settings = _settings(
+        src_grib_root_uri=f"file://{src}", refs_root_path=str(tmp_path / "refs")
+    )
+    calls = []
+    monkeypatch.setattr(
+        index_refs, "_run_index", lambda inputs, nprocs=2: calls.append(inputs)
+    )
+    monkeypatch.setattr(
+        index_refs,
+        "_run_build_refs",
+        lambda indexes, refs_dir, prefix: calls.append(prefix),
+    )
+    monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
+    index_refs.build_indexes_and_refs(t, settings)
+    # gribscan only takes plain paths, so the file:// prefix is stripped
+    assert all(path.startswith(str(src) + "/") for path in calls[0])
+    assert calls[1] == str(src) + "/"
 
 
 def test_t_analysis_cli_arg_default_and_errors():

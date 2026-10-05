@@ -20,7 +20,7 @@ from .config_ig import PROJECTION_IDENTIFIER as IG_PROJECTION_IDENTIFIER
 from .config_ig import PROJECTION_WKT as IG_PROJECTION_WKT
 from .grib_definitions import set_local_eccodes_definitions_path
 from .read_source import read_level_type_data
-from .settings import Settings, dest_profile, format_output_path, require_utc
+from .settings import Settings, format_output_path, require_utc
 from .write_zarr import write_output_zarrs
 
 DEFAULT_FORECAST_DURATION = "PT3H"
@@ -153,5 +153,5 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
                 dataset_id=part_id,
             ),
             rechunk_to=rechunk_to,
-            profile=dest_profile(settings),
+            profile=settings.dst_aws_profile,
         )

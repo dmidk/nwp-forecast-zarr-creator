@@ -140,7 +140,7 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
     logger.info(f"REFS_ROOT_PATH: {settings.refs_root_path}")
     logger.info(f"SRC_GRIB_TEMP_PATH: {settings.src_grib_temp_path or 'not set'}")
     logger.info(f"SUITE_NAME: {settings.suite_name}")
-    if settings.src_grib_root_uri.startswith("s3://"):
+    if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(
             f"S3 source auth: "
             f"{describe_source_auth(settings.src_anon, settings.src_aws_profile)}"
