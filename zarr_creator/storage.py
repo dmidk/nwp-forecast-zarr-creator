@@ -42,11 +42,13 @@ def s3_verify_ssl() -> bool:
     return os.environ.get("S3_VERIFY_SSL", "").lower() not in {"0", "false", "no"}
 
 
-def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
-    """Resolve ``(filesystem, path)`` for any URL via fsspec.
+def storage_options(url: str, profile: str | None = None, anon: bool = False) -> dict:
+    """fsspec filesystem kwargs for ``url``.
 
     ``profile``/``anon`` are only forwarded for ``s3://`` URLs. ``anon``
     enables unsigned reads of public buckets (CI fixture consumption).
+    Local filesystems create parent directories on write, which zarr 3's
+    fsspec store relies on.
     """
     if url.startswith("s3://"):
         kwargs: dict = {"anon": anon}
@@ -54,8 +56,13 @@ def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
             kwargs["profile"] = profile
         if not s3_verify_ssl():
             kwargs["client_kwargs"] = {"verify": False}
-        return fsspec.url_to_fs(url, **kwargs)
-    return fsspec.url_to_fs(url)
+        return kwargs
+    return {"auto_mkdir": True}
+
+
+def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
+    """Resolve ``(filesystem, path)`` for any URL via fsspec."""
+    return fsspec.url_to_fs(url, **storage_options(url, profile, anon))
 
 
 def is_local_uri(uri: str) -> bool:
