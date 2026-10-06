@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v0.9.0]
+
+This release replaces the bash scripts with a Python-only pipeline. Source GRIB files can be read from S3 (downloaded to a local staging directory, so no S3 mount is needed) or from a local path, and the zarr output can be written to any local or S3 path set with `DST_ZARR_OUTPUT_PATH`. It contains breaking changes to the command line and the container entrypoint, see below. [\#36](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/36), @leifdenby
+
 ### Breaking changes
 
 - The command line is a single entry point with subcommands:

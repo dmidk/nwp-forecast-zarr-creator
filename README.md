@@ -275,5 +275,5 @@ only published to `ghcr.io/dmidk/nwp-forecast-zarr-creator` when a version tag
 docker pull ghcr.io/dmidk/nwp-forecast-zarr-creator:v0.9.0
 ```
 
-To publish a new image, make a release: tag the commit on `main` and push the
-tag, e.g. `git tag v0.9.0 && git push upstream v0.9.0`.
+To publish a new image, make a release, see
+[Making a release](DEVELOPING.md#making-a-release).
