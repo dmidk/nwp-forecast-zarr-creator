@@ -49,11 +49,9 @@ def test_missing_files_raise(tmp_path):
 def test_s3_auth_error_gets_remediation_hint(monkeypatch):
     settings = _settings(src_grib_root_uri="s3://bucket/ml")
 
-    class Fake403(Exception):
-        response = {"Error": {"Code": "403"}}
-
     def raise_403(*args, **kwargs):
-        raise Fake403("An error occurred (403) when calling HeadObject: Forbidden")
+        # What s3fs raises for a 403 / AccessDenied response.
+        raise PermissionError("Forbidden")
 
     monkeypatch.setattr(index_refs.storage, "find_missing", raise_403)
     with pytest.raises(RuntimeError, match="SRC_ANON"):

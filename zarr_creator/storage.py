@@ -15,6 +15,7 @@ import shutil
 import sys
 
 import fsspec
+from botocore.exceptions import NoCredentialsError
 from fsspec.callbacks import TqdmCallback
 from fsspec.core import strip_protocol
 from fsspec.implementations.local import LocalFileSystem
@@ -189,33 +190,32 @@ def cleanup_temp(path: str) -> None:
         shutil.rmtree(path)
 
 
-_AUTH_ERROR_MARKERS = (
-    "403",
-    "forbidden",
-    "accessdenied",
-    "invalidaccesskeyid",
-    "signaturedoesnotmatch",
-    "nocredentials",
-    "missingcredentials",
-    "expiredtoken",
-    "invalidclienttokenid",
-)
+# s3fs maps S3's AccessDenied, InvalidAccessKeyId, ExpiredToken,
+# SignatureDoesNotMatch etc. (and bare 403s) to PermissionError; missing
+# credentials surface as botocore's NoCredentialsError.
+_AUTH_ERRORS = (PermissionError, NoCredentialsError)
+
+
+def _is_auth_error(exc: BaseException | None) -> bool:
+    """Whether ``exc``, or an exception it was raised from, is an auth failure."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, _AUTH_ERRORS):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 def auth_error_hint(exc: Exception, *, anon: bool) -> str | None:
-    """Remediation guidance if ``exc`` looks like an S3 auth failure.
+    """Remediation guidance if ``exc`` is an S3 auth failure.
 
     Returns None for non-auth errors. Catches the classic 403 confusion in
     both directions: unsigned reads against a private bucket, and signed
     reads with bad/missing credentials (or against a public bucket that
     needs no signing).
     """
-    code = ""
-    response = getattr(exc, "response", None)
-    if isinstance(response, dict):
-        code = str(response.get("Error", {}).get("Code", ""))
-    text = f"{code} {exc}".lower()
-    if not any(marker in text for marker in _AUTH_ERROR_MARKERS):
+    if not _is_auth_error(exc):
         return None
     if anon:
         return (
