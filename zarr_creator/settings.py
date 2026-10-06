@@ -25,6 +25,8 @@ DEFAULT_REFS_ROOT_PATH = "/home/ec2-user/nwp-forecast-zarr-creator/refs"
 DEFAULT_MEMBER_ID = "CONTROL__dmi"
 DEFAULT_MAX_HOUR = 36
 DEFAULT_SUITE_NAME = "dini"
+# Lowercase only; the name also fills {suite_name} in output paths.
+SUITE_NAMES = ("dini", "ig")
 DEFAULT_DST_ZARR_OUTPUT_PATH = "file:///tmp/{suite_name}-recent/{dataset_id}.zarr"
 
 FILE_TYPES = ("sf", "pl")
@@ -53,6 +55,16 @@ class Settings:
     dst_aws_profile: str | None = None
     # Unsigned S3 reads (public CI fixture bucket). Never used for writes.
     src_anon: bool = False
+
+    def __post_init__(self) -> None:
+        # Checked here rather than in each CLI so that code passing its own
+        # Settings to the runner also fails before indexing; the conversion
+        # retry loop would otherwise retry an unsupported suite forever.
+        if self.suite_name not in SUITE_NAMES:
+            raise ValueError(
+                f"SUITE_NAME must be one of {', '.join(SUITE_NAMES)}, "
+                f"got: {self.suite_name!r}"
+            )
 
 
 def _resolve_src_root() -> str:

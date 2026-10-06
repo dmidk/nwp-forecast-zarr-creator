@@ -65,10 +65,10 @@ temporary location before indexing (recommended for S3 sources), set
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the configured output:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name DINI
+uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name dini
 ```
 
-`suite-name` can optionally be set to `DINI` (default) or `IG`.
+`suite-name` can optionally be set to `dini` (default) or `ig`.
 Output destinations come from `DST_ZARR_OUTPUT_PATH` (default:
 `file:///tmp/{suite_name}-recent/{dataset_id}.zarr`, i.e. local only).
 
@@ -94,7 +94,7 @@ before running, or by passing the corresponding CLI flag (e.g.
 | `DST_ZARR_OUTPUT_PATH` | `file:///tmp/{suite_name}-recent/{dataset_id}.zarr` | `s3://harmonie-zarr/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr` | Full output-path format string (`{suite_name}`, `{member}`, `{t_analysis}`, `{dataset_id}`), written via fsspec (local path or `s3://`). Must contain `{dataset_id}`; without `{t_analysis}` each run overwrites the previous output. |
 | `MEMBER_ID` | `CONTROL__dmi` | *as built-in default* | Forecast member identifier in file names. |
 | `MAX_HOUR` | `36` | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`). |
-| `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `DINI` and `IG`. |
+| `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `dini` and `ig`. |
 | `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
 | `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
 | `S3_VERIFY_SSL` | _unset_ (verify) | _unset_ (verify) | Set to `0` to skip TLS certificate verification for all S3 reads and writes, like `aws s3 --no-verify-ssl` (e.g. for an endpoint signed by an internal CA). |

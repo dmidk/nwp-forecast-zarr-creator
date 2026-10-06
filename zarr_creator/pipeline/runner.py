@@ -74,10 +74,9 @@ def mark_refs_done(
 
 def _run_conversion(t_analysis: datetime.datetime, settings: Settings) -> None:
     # Lazy import: keeps this module side-effect free and patchable in tests.
-    from ..__main__ import cli as convert
+    from ..__main__ import convert
 
-    t_str = require_utc(t_analysis).isoformat()
-    convert(["--t_analysis", t_str, "--suite-name", settings.suite_name])
+    convert(t_analysis, settings)
 
 
 def process_one(
