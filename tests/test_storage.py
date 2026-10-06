@@ -87,15 +87,56 @@ def test_find_missing_lists_once_with_common_prefix(monkeypatch):
 
 
 def test_find_missing_propagates_auth_errors(monkeypatch):
+    list_error = PermissionError("Access Denied")
+
     class DeniedFS:
         def find(self, path, **kwargs):
-            raise PermissionError("Access Denied")
+            raise list_error
+
+        def exists(self, path):
+            raise PermissionError("Forbidden")
 
     monkeypatch.setattr(
         storage, "resolve_fs", lambda url, profile=None, anon=False: (DeniedFS(), "b")
     )
-    with pytest.raises(PermissionError):
-        storage.find_missing("s3://b", ["x"])
+    with pytest.raises(PermissionError) as excinfo:
+        storage.find_missing("s3://b", ["x", "y"])
+    assert excinfo.value is list_error
+
+
+def test_find_missing_falls_back_to_head_when_listing_denied(monkeypatch):
+    class NoListFS:
+        def find(self, path, **kwargs):
+            raise PermissionError("Access Denied")
+
+        def exists(self, path):
+            return path == "b/ml/present"
+
+    monkeypatch.setattr(
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (NoListFS(), "b/ml"),
+    )
+    assert storage.find_missing("s3://b/ml", ["present", "absent"]) == ["absent"]
+
+
+def test_find_missing_head_fallback_treats_denied_name_as_missing(monkeypatch):
+    # Without ListBucket, S3 answers HEAD on a missing key with 403
+    class NoListFS:
+        def find(self, path, **kwargs):
+            raise PermissionError("Access Denied")
+
+        def exists(self, path):
+            if path == "b/ml/present":
+                return True
+            raise PermissionError("Forbidden")
+
+    monkeypatch.setattr(
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (NoListFS(), "b/ml"),
+    )
+    assert storage.find_missing("s3://b/ml", ["present", "absent"]) == ["absent"]
 
 
 def test_download_memory_to_temp(tmp_path):

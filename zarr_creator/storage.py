@@ -87,7 +87,12 @@ def find_missing(
     Lists ``root_uri`` once instead of checking every name: s3fs sends the
     common prefix of ``names`` as a single, uncached LIST request (so new
     files show up in long-running watch loops); other filesystems ignore
-    it. A missing root means all names are missing; auth errors propagate.
+    it. A missing root means all names are missing.
+
+    If listing is denied (read-only buckets like the public test fixture
+    allow GET/HEAD but not LIST), each name is checked individually instead.
+    Auth errors propagate when no name can be checked either, so on such a
+    bucket "none of the files exist yet" is reported as an auth error.
     """
     if not names:
         return []
@@ -96,8 +101,36 @@ def find_missing(
         found = fs.find(root, prefix=os.path.commonprefix(names))
     except FileNotFoundError:
         found = []
+    except Exception as exc:
+        if not _is_auth_error(exc):
+            raise
+        return _find_missing_by_head(fs, root, names, list_error=exc)
     present = {posixpath.relpath(path, root) for path in found}
     return [name for name in names if name not in present]
+
+
+def _find_missing_by_head(fs, root: str, names: list[str], list_error: Exception):
+    """Per-name existence checks for when listing ``root`` is denied.
+
+    Without ListBucket, S3 answers HEAD on a missing key with 403 rather
+    than 404, so a denied name counts as missing. If every name is denied,
+    the credentials likely cannot read the bucket at all: re-raise the
+    listing error so callers still get the auth hint.
+    """
+    missing, denied = [], 0
+    for name in names:
+        try:
+            present = fs.exists(posixpath.join(root, name))
+        except Exception as exc:
+            if not _is_auth_error(exc):
+                raise
+            present = False
+            denied += 1
+        if not present:
+            missing.append(name)
+    if denied == len(names):
+        raise list_error
+    return missing
 
 
 def join(root_uri: str, *parts: str) -> str:
