@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking changes
+
+- The command line is a single entry point with subcommands:
+  `python -m zarr_creator run` (as before), `python -m zarr_creator index`
+  (was `python -m zarr_creator.pipeline.index_refs`) and
+  `python -m zarr_creator convert` (was `python -m zarr_creator`, which now
+  requires a subcommand). The `nwp-zarr` script has the same subcommands,
+  e.g. `nwp-zarr run --watch`.
+
 ### Changed
 
 - Python-only orchestration: `run.sh`, `build_indexes_and_refs.sh`,

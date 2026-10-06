@@ -189,8 +189,8 @@ failures it also prints how to resolve the mismatch:
 Inside the Dev Container terminal:
 
 ```bash
-SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator uv run python -m zarr_creator.pipeline.index_refs --t-analysis 2025-03-02T00:00:00Z
-uv run python -m zarr_creator --t_analysis 2025-03-02T00:00:00Z
+SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator uv run python -m zarr_creator index --t-analysis 2025-03-02T00:00:00Z
+uv run python -m zarr_creator convert --t-analysis 2025-03-02T00:00:00Z
 ```
 
 Or the full one-shot runner (index + convert) / watcher:
@@ -203,7 +203,7 @@ uv run python -m zarr_creator run --watch
 Generated refs are written to `./refs` in your repo (when `REFS_ROOT_PATH`
 points there). `run` deletes an analysis time's refs after a successful
 conversion, leaving a `.done` marker; to keep them (and the staged GRIB
-files) pass `--no-cleanup`, or run `pipeline.index_refs` on its own. Zarr output goes to `DST_ZARR_OUTPUT_PATH`
+files) pass `--no-cleanup`, or run `index` on its own. Zarr output goes to `DST_ZARR_OUTPUT_PATH`
 (`docker-compose.dev.yml` defaults it to local
 `file:///tmp/nwp-zarr-output/...`, so no S3 writes happen in dev unless you
 override it).
@@ -235,7 +235,7 @@ the fixture is regenerated at a new analysis time.
 
 All runtime options live in `zarr_creator/settings.py`, each mapped 1:1 to an
 environment variable. Precedence: explicit CLI flag > environment variable >
-built-in default — the same flags exist on `run`, `pipeline.index_refs`, and
+built-in default — the same flags exist on `run`, `index`, `convert`, and
 `create_test_fixture` (e.g. `--max-hour` overrides `MAX_HOUR`):
 
 - `SRC_GRIB_ROOT_URI`
