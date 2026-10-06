@@ -15,19 +15,26 @@ dependencies = [
     "dask<=2024.11.2",
     "zarrdump>=0.4.2",
     "s3fs>=2025.2.0",
+    "botocore>=1.36.0",
     "cf-xarray>=0.10.0",
     "scipy==1.15.3",
     "isodate>=0.7.2",
     "eccodeslib==2.42.0",
     "eccodes==2.42.0",
-    "zarr>2.18.6",
+    "zarr>=3.0",
+    "xarray>=2025.1",
     "numba>=0.64.0",
+    "tqdm>=4.66.0",
     "gribscan",
 ]
 requires-python = ">=3.11"
 readme = "README.md"
 license = {text = "MIT"}
 
+
+[project.scripts]
+nwp-zarr = "zarr_creator.__main__:cli"
+nwp-fixture = "zarr_creator.create_test_fixture:main"
 
 [tool.pdm]
 distribution = true
@@ -67,6 +74,7 @@ zarr_creator = ["eccodes_defitions/**/*", "catalog/*.yml"]
 gribscan = { git = "https://github.com/leifdenby/gribscan", rev = "feat/cf-cell-methods" }
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 markers = [
     "integration: tests that require external services or credentials",
 ]
