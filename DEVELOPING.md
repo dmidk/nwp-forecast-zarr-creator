@@ -247,3 +247,22 @@ built-in default — the same flags exist on `run`, `index`, `convert`, and
   from `~/.aws`), `SRC_ANON`
 
 This allows the same code to run in both production and local dev.
+
+## Making a release
+
+Container images are only published to `ghcr.io/dmidk/nwp-forecast-zarr-creator`
+when a version tag (`v*`) is pushed. The package version is read from the same
+tag. Versions follow [Semantic Versioning](https://semver.org/).
+
+1. Move the `## [Unreleased]` entries in `CHANGELOG.md` to a new version
+   section (e.g. `## [v0.9.0]`) and merge this to `main` via a pull request.
+2. Tag the merge commit and push the tag:
+
+   ```bash
+   git switch main && git pull upstream main --tags
+   git tag -a vX.Y.Z -m "vX.Y.Z"
+   git push upstream vX.Y.Z
+   ```
+
+3. Check that the "Build Container" workflow for the tag succeeds and the
+   image is published as `ghcr.io/dmidk/nwp-forecast-zarr-creator:vX.Y.Z`.
