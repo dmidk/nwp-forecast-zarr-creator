@@ -226,6 +226,18 @@ To enable running on AWS EC2 in Amazon Linux 2 we provide a Dockerfile. This was
 So we run everything inside a container with a known-good ecCodes installation,
 so we have a consistent and reproducible environment.
 
+## Using pre-built tagged images from github container registry (ghrc.io)
+
+As of
+[v0.7.0](https://github.com/dmidk/nwp-forecast-zarr-creator/releases#release-v0.7.0)
+we built container images in CI and push to ghrc.io, and so we can deploy the
+application directly with these:
+
+```bash
+docker run -d --rm -v /mnt/:/mnt/ -v /tmp/:/tmp/ --name nwp-forecast-zarr-creator ghcr.io/dmidk/nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0)
+```
+
+## Building images locally and running from these
 
 Build image (using most recent git tag to set tag for image):
 
@@ -236,7 +248,7 @@ docker build -t nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0) .
 Run container (by default the image runs the pipeline watcher, i.e. `run --watch`):
 
 ```bash
-docker run --rm -it -v /mnt/:/mnt/ -v /tmp/:/tmp/ --name nwp-forecast-zarr-creator nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0)
+docker run -d --rm -v /mnt/:/mnt/ -v /tmp/:/tmp/ --name nwp-forecast-zarr-creator nwp-forecast-zarr-creator:$(git describe --tags --abbrev=0)
 ```
 
 Arguments after the image name replace the default `--watch`, so to process a
