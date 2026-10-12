@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `q` is derived from `r` and `t`, and 600 hPa is interpolated in ln(p)
   between 500 and 700 hPa. Each suite now has its own file names, gribscan
   magician, cycle interval, delivery lag and `MAX_HOUR`/`MEMBER_ID` defaults
-  (`zarr_creator/suites.py`).
+  (`zarr_creator/suites.py`); `ANALYSIS_LAG_HOURS` /
+  `ANALYSIS_INTERVAL_HOURS` override the suite's lag and interval.
 
 ### Changed
 
@@ -25,10 +26,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after the suite is known.
 - Refs are assembled in-process via `gribscan.grib_magic` instead of the
   `gribscan-build` CLI, so suites can use their own magician.
-- `python -m zarr_creator run` now passes its refs root, member id, output
-  path and destination profile on to the conversion step. Before, the
-  conversion re-read these from the environment and ignored the
-  corresponding CLI flags.
+
+## [v0.9.0]
+
+This release replaces the bash scripts with a Python-only pipeline. Source GRIB files can be read from S3 (downloaded to a local staging directory, so no S3 mount is needed) or from a local path, and the zarr output can be written to any local or S3 path set with `DST_ZARR_OUTPUT_PATH`. It contains breaking changes to the command line and the container entrypoint, see below. [\#36](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/36), @leifdenby
+
+### Breaking changes
+
+- The command line is a single entry point with subcommands:
+  `python -m zarr_creator run` (as before), `python -m zarr_creator index`
+  (was `python -m zarr_creator.pipeline.index_refs`) and
+  `python -m zarr_creator convert` (was `python -m zarr_creator`, which now
+  requires a subcommand). The `nwp-zarr` script has the same subcommands,
+  e.g. `nwp-zarr run --watch`.
+
+### Changed
 
 - Python-only orchestration: `run.sh`, `build_indexes_and_refs.sh`,
   `script_defaults.sh`, and `scripts/download_harmonie_data.sh` are removed,

@@ -8,42 +8,24 @@ HARMONIE, see ``zarr_creator.suites``):
    completeness (replaces the ``test -f`` loop).
 2. If ``SRC_GRIB_TEMP_PATH`` is set, download/copy files there first and
    index the staged copy (replaces ``rsync``); otherwise index in place.
-   S3 sources without a temp path log a warning — direct S3 reads by
-   gribscan/eccodes are unverified — and are attempted in place anyway.
+   gribscan only reads plain local paths, so a source on any other
+   filesystem (e.g. ``s3://``) requires ``SRC_GRIB_TEMP_PATH``.
 3. Run ``gribscan-index`` in-process (with the local DMI eccodes
    definitions path set), then assemble the refs with the suite's gribscan
    magician (what ``gribscan-build --prefix <src>/ -m <magician>`` does).
 """
 
-import argparse
 import datetime
 import json
 import os
 
+from fsspec.core import split_protocol
 from loguru import logger
 
 from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
-from ..settings import (
-    LATEST,
-    Settings,
-    describe_source_auth,
-    refs_dir_for,
-    require_utc,
-    resolve_t_analysis_for_suite,
-    source_profile,
-)
+from ..settings import Settings, describe_source_auth, refs_dir_for, require_utc
 from ..suites import get_suite
-from .cli_args import (
-    T_ANALYSIS_HELP,
-    add_settings_arguments,
-    settings_from_args,
-    t_analysis_arg,
-)
-
-
-def _is_s3_uri(uri: str) -> bool:
-    return uri.startswith("s3://")
 
 
 def _run_index(inputs: list[str], nprocs: int = 2, outdir: str | None = None) -> None:
@@ -92,11 +74,11 @@ def build_indexes_and_refs(
     """Build indexes and refs for one analysis time; return the refs dir."""
     t_analysis = require_utc(t_analysis)
     suite = get_suite(settings.suite_name)
-    profile = source_profile(settings)
+    profile = settings.src_aws_profile
     anon = settings.src_anon
 
-    if _is_s3_uri(settings.src_grib_root_uri):
-        logger.info(f"S3 source auth: {describe_source_auth(anon, profile)}")
+    if not storage.is_local_uri(settings.src_grib_root_uri):
+        logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
     file_groups = suite.grib_file_groups(
         t_analysis, settings.max_hour, settings.member_id
@@ -104,7 +86,9 @@ def build_indexes_and_refs(
     filenames = [name for names in file_groups.values() for name in names]
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
     try:
-        missing = storage.find_missing(urls, profile, anon)
+        missing = storage.find_missing(
+            settings.src_grib_root_uri, filenames, profile, anon
+        )
     except Exception as exc:
         hint = storage.auth_error_hint(exc, anon=anon)
         if hint is not None:
@@ -112,7 +96,8 @@ def build_indexes_and_refs(
         raise
     if missing:
         raise FileNotFoundError(
-            f"{len(missing)} expected GRIB file(s) missing for analysis time "
+            f"{len(missing)} of {len(filenames)} expected GRIB file(s) missing "
+            f"from {settings.src_grib_root_uri} for analysis time "
             f"{t_analysis.isoformat()}: {missing[:5]}"
             + (" ..." if len(missing) > 5 else "")
         )
@@ -123,17 +108,15 @@ def build_indexes_and_refs(
         )
         src_dir = _download_with_hint(urls, settings, profile, anon)
     else:
-        if _is_s3_uri(settings.src_grib_root_uri):
-            logger.warning(
-                "Source is S3 but SRC_GRIB_TEMP_PATH is not set; "
-                "gribscan/eccodes likely cannot read directly from S3. "
-                "Set SRC_GRIB_TEMP_PATH to stage files locally. "
-                "Attempting in-place reads anyway."
+        if not storage.is_local_uri(settings.src_grib_root_uri):
+            raise ValueError(
+                f"SRC_GRIB_TEMP_PATH must be set to read from "
+                f"{settings.src_grib_root_uri}: gribscan can only index files on "
+                "the local filesystem."
             )
-        logger.info(
-            f"No staging path set, indexing directly from {settings.src_grib_root_uri}"
-        )
-        src_dir = settings.src_grib_root_uri
+        # gribscan needs a plain path, so drop any ``file://`` prefix.
+        _, src_dir = split_protocol(settings.src_grib_root_uri)
+        logger.info(f"No staging path set, indexing directly from {src_dir}")
 
     refs_dir = refs_dir_for(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
@@ -147,10 +130,8 @@ def build_indexes_and_refs(
         os.makedirs(index_dir, exist_ok=True)
 
     for group, names in file_groups.items():
-        if _is_s3_uri(src_dir):
-            inputs = [storage.join(src_dir, name) for name in names]
-        else:
-            inputs = [os.path.join(src_dir, name) for name in names]
+        # src_dir is always local here: non-local sources must be staged.
+        inputs = [os.path.join(src_dir, name) for name in names]
         logger.info(f"Indexing {group} files ({len(inputs)} files)")
         _run_index(inputs, outdir=index_dir)
         if index_dir is None:
@@ -166,23 +147,3 @@ def build_indexes_and_refs(
         )
 
     return refs_dir
-
-
-def main(argv=None) -> str:
-    """CLI: ``python -m zarr_creator.pipeline.index_refs --t-analysis ...``."""
-    parser = argparse.ArgumentParser(description="Build GRIB indexes and refs")
-    parser.add_argument(
-        "--t-analysis",
-        type=t_analysis_arg,
-        default=LATEST,
-        help=T_ANALYSIS_HELP + " (default: %(default)s)",
-    )
-    add_settings_arguments(parser)
-    args = parser.parse_args(argv)
-    settings = settings_from_args(args)
-    t_analysis = resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name)
-    return build_indexes_and_refs(t_analysis, settings)
-
-
-if __name__ == "__main__":
-    main()

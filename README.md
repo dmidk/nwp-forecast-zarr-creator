@@ -1,6 +1,6 @@
 # NWP Forecast in zarr format
 
-This repository contains the code to process DINI and IG GRIB files into zarr format.
+This repository contains the code to process DINI, IG and IFS GRIB files into zarr format.
 
 For local VS Code + Docker development, see [DEVELOPING.md](DEVELOPING.md).
 
@@ -30,13 +30,15 @@ For continuous operation run the pipeline watcher, e.g. in a tmux session
 uv run python -m zarr_creator run --watch
 ```
 
-This polls for the latest 3-hourly analysis time every 5 minutes, builds
+This polls for the latest analysis time every 5 minutes, builds
 indexes/refs when missing, and converts to zarr (retrying on failure).
 If not all source GRIB files for the analysis time have arrived yet, it logs
 a warning and tries again on the next poll instead of exiting.
 For a single analysis time (cron / Kubernetes Job), omit `--watch` and
 optionally pass `--t-analysis`, an ISO8601 time with a timezone or `latest`
-(the default: now minus 2 hours, floored to a 3-hour boundary). `--watch`
+(the default: now minus `ANALYSIS_LAG_HOURS`, floored to a multiple of
+`ANALYSIS_INTERVAL_HOURS`; with the defaults, now minus 2 hours floored to a
+3-hour boundary, or 7 hours and 6 for the `ifs` suite). `--watch`
 always follows the latest analysis time, so it cannot be combined with
 `--t-analysis`. A one-shot run exits non-zero (e.g. when source files
 are missing) so the scheduler can retry, and conversion failures retry
@@ -53,7 +55,7 @@ Running the conversion manually requires two steps:
 1. Build GRIB indexes and refs:
 
 ```bash
-uv run python -m zarr_creator.pipeline.index_refs --t-analysis 2025-02-27T15:00:00Z
+uv run python -m zarr_creator index --t-analysis 2025-02-27T15:00:00Z
 ```
 
 This writes refs to `refs/`. If you want to stage source GRIB files in a
@@ -63,10 +65,10 @@ temporary location before indexing (recommended for S3 sources), set
 2. Read the refs, build the three datasets (height-levels, pressure-levels and single-levels) as `xr.Datasets` and write each to the configured output:
 
 ```bash
-uv run python -m zarr_creator --t_analysis 2025-02-27T15:00:00Z --suite-name dini
+uv run python -m zarr_creator convert --t-analysis 2025-02-27T15:00:00Z --suite-name dini
 ```
 
-`suite-name` can be set to `dini` (default), `ig` or `ifs` (see below).
+`--suite-name` can be set to `dini` (default), `ig` or `ifs` (see below).
 Output destinations come from `DST_ZARR_OUTPUT_PATH` (default:
 `file:///tmp/{suite_name}-recent/{dataset_id}.zarr`, i.e. local only).
 
@@ -87,6 +89,7 @@ the ANNA boundary datastore expects (see the contract in
 The suite changes some defaults:
 
 - cycles are 6-hourly with a 7h delivery lag for `--t-analysis latest`
+  (unless `ANALYSIS_INTERVAL_HOURS` / `ANALYSIS_LAG_HOURS` are set)
 - `MAX_HOUR` defaults to 72, and steps go every 3h
 - `MEMBER_ID` defaults to `control`
 - the `.index` files are written to the refs directory, not next to the
@@ -135,6 +138,9 @@ before running, or by passing the corresponding CLI flag (e.g.
 | `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `dini`, `ig` and `ifs`. |
 | `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
 | `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
+| `S3_VERIFY_SSL` | _unset_ (verify) | _unset_ (verify) | Set to `0` to skip TLS certificate verification for all S3 reads and writes, like `aws s3 --no-verify-ssl` (e.g. for an endpoint signed by an internal CA). |
+| `ANALYSIS_INTERVAL_HOURS` | `3` (`6` for `ifs`) | *as built-in default* | Hours between analysis times; `latest` and `--watch` floor to a multiple of this. Must divide 24 (e.g. `1` for hourly analyses). |
+| `ANALYSIS_LAG_HOURS` | `2` (`7` for `ifs`) | *as built-in default* | Hours allowed for source data delivery; `latest` means now minus this, floored to the analysis interval. |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.
@@ -144,7 +150,7 @@ Example overrides:
 ```bash
 export MAX_HOUR=12
 export SRC_GRIB_TEMP_PATH=/tmp/nwp-forecast-zarr-creator
-uv run python -m zarr_creator.pipeline.index_refs --t-analysis 2025-02-27T15:00:00Z
+uv run python -m zarr_creator index --t-analysis 2025-02-27T15:00:00Z
 ```
 
 Data flow when `SRC_GRIB_TEMP_PATH` is **unset** (index in place):
@@ -158,7 +164,7 @@ flowchart TB
 
   subgraph C["Container"]
     C1["${SRC_GRIB_ROOT_URI}<br/>local path or s3://bucket/prefix"]
-    C2["pipeline.index_refs"]
+    C2["zarr_creator index"]
     C3["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C4["zarr_creator convert"]
     C5["${DST_ZARR_OUTPUT_PATH}<br/>(single zarr destination)"]
@@ -184,7 +190,7 @@ flowchart TB
   subgraph C["Container"]
     C1["${SRC_GRIB_ROOT_URI}<br/>local path or s3://bucket/prefix"]
     C2["${SRC_GRIB_TEMP_PATH}<br/>default=unset (prod Docker default=/tmp/nwp-forecast-zarr-creator)"]
-    C3["pipeline.index_refs"]
+    C3["zarr_creator index"]
     C4["${REFS_ROOT_PATH}<br/>default=/app/refs (in container)"]
     C5["zarr_creator convert"]
     C6["${DST_ZARR_OUTPUT_PATH}<br/>(single zarr destination)"]
@@ -298,3 +304,17 @@ Regarding the volume mounts:
   storage (credentials via `SRC_AWS_PROFILE` / `~/.aws`, no s3fs mount needed).
 - By mounting the `/tmp` path to the system one we avoid having to copy the
   files on every execution by using the system storage as a cache.
+
+## Published container images
+
+CI (`.github/workflows/container-image.yml`) builds the image on every push and
+pull request to check that it still builds, but does not publish it. Images are
+only published to `ghcr.io/dmidk/nwp-forecast-zarr-creator` when a version tag
+(`v*`) is pushed, and are tagged with the version and `latest`:
+
+```bash
+docker pull ghcr.io/dmidk/nwp-forecast-zarr-creator:v0.9.0
+```
+
+To publish a new image, make a release, see
+[Making a release](DEVELOPING.md#making-a-release).

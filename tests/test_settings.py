@@ -55,6 +55,16 @@ def test_env_overrides(monkeypatch):
     assert cfg.dst_zarr_output_path == "s3://out/{suite_name}/{dataset_id}.zarr"
 
 
+@pytest.mark.parametrize("suite", ["nope", "DINI"])
+def test_unsupported_suite_name_rejected(monkeypatch, suite):
+    monkeypatch.setenv("SUITE_NAME", suite)
+    with pytest.raises(ValueError, match="SUITE_NAME must be one of dini, ig"):
+        s.load_settings()
+    # Also when the Settings are built directly, e.g. for process_one.
+    with pytest.raises(ValueError, match="SUITE_NAME"):
+        s.Settings(suite_name=suite)
+
+
 def test_deprecated_alias_warns(monkeypatch):
     monkeypatch.delenv("SRC_GRIB_ROOT_URI", raising=False)
     monkeypatch.delenv("SRC_GRIB_ROOT", raising=False)
@@ -85,19 +95,48 @@ def test_profile_fallback_matrix(monkeypatch):
     for var in ("SRC_AWS_PROFILE", "DST_AWS_PROFILE", "AWS_PROFILE"):
         monkeypatch.delenv(var, raising=False)
     cfg = s.load_settings()
-    assert s.source_profile(cfg) is None
-    assert s.dest_profile(cfg) is None
+    assert cfg.src_aws_profile is None
+    assert cfg.dst_aws_profile is None
 
     monkeypatch.setenv("AWS_PROFILE", "base")
     cfg = s.load_settings()
-    assert s.source_profile(cfg) == "base"
-    assert s.dest_profile(cfg) == "base"
+    assert cfg.src_aws_profile == "base"
+    assert cfg.dst_aws_profile == "base"
 
     monkeypatch.setenv("SRC_AWS_PROFILE", "src")
     cfg = s.load_settings()
-    assert s.source_profile(cfg) == "src"
-    assert s.dest_profile(cfg) == "base"
-    assert s.source_profile(cfg, explicit="cli") == "cli"
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "base"
+
+    monkeypatch.setenv("DST_AWS_PROFILE", "dst")
+    cfg = s.load_settings()
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "dst"
+
+
+def test_profile_cli_flags_override_env(monkeypatch):
+    import argparse
+
+    from zarr_creator.pipeline.cli_args import (
+        add_settings_arguments,
+        settings_from_args,
+    )
+
+    monkeypatch.setenv("SRC_AWS_PROFILE", "src")
+    monkeypatch.setenv("DST_AWS_PROFILE", "dst")
+    parser = argparse.ArgumentParser()
+    add_settings_arguments(parser)
+
+    cfg = settings_from_args(parser.parse_args([]))
+    assert cfg.src_aws_profile == "src"
+    assert cfg.dst_aws_profile == "dst"
+
+    args = parser.parse_args(
+        ["--source-profile", "cli-src", "--dest-profile", "cli-dst"]
+    )
+    cfg = settings_from_args(args)
+    assert cfg.src_aws_profile == "cli-src"
+    assert cfg.dst_aws_profile == "cli-dst"
 
 
 def test_src_anon_parsing(monkeypatch):
@@ -161,6 +200,44 @@ def test_resolve_t_analysis_latest_uses_now_with_lag():
     assert s.resolve_t_analysis("latest", now=now) == expected
     assert s.resolve_t_analysis("LATEST", now=now) == expected
     assert s.resolve_t_analysis(None, now=now) == expected
+
+
+def test_resolve_t_analysis_latest_hourly_interval(monkeypatch):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
+    now = datetime.datetime(2025, 3, 2, 5, 30, tzinfo=datetime.timezone.utc)
+    # 05:30 - 2h = 03:30 -> floored to the 03:00 analysis time
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 3, tzinfo=datetime.timezone.utc
+    )
+    now = datetime.datetime(2025, 3, 2, 6, 30, tzinfo=datetime.timezone.utc)
+    # 06:30 - 2h = 04:30 -> 04:00 (a 3h interval would give 03:00)
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 4, tzinfo=datetime.timezone.utc
+    )
+
+
+def test_resolve_t_analysis_latest_custom_lag(monkeypatch):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
+    monkeypatch.setenv("ANALYSIS_LAG_HOURS", "0.5")
+    now = datetime.datetime(2025, 3, 2, 6, 20, tzinfo=datetime.timezone.utc)
+    # 06:20 - 30min = 05:50 -> 05:00
+    assert s.resolve_t_analysis("latest", now=now) == datetime.datetime(
+        2025, 3, 2, 5, tzinfo=datetime.timezone.utc
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "5", "-3", "hourly"])
+def test_get_analysis_interval_in_hours_rejects_invalid(monkeypatch, value):
+    monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", value)
+    with pytest.raises(ValueError, match="ANALYSIS_INTERVAL_HOURS"):
+        s.get_analysis_interval_in_hours()
+
+
+@pytest.mark.parametrize("value", ["-1", "two"])
+def test_get_analysis_lag_in_hours_rejects_invalid(monkeypatch, value):
+    monkeypatch.setenv("ANALYSIS_LAG_HOURS", value)
+    with pytest.raises(ValueError, match="ANALYSIS_LAG_HOURS"):
+        s.get_analysis_lag_in_hours()
 
 
 def test_resolve_t_analysis_explicit_and_naive():

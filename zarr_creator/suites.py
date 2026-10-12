@@ -33,9 +33,7 @@ import xarray as xr
 
 from .settings import DEFAULT_MAX_HOUR as HARMONIE_MAX_HOUR
 from .settings import DEFAULT_MEMBER_ID as HARMONIE_MEMBER_ID
-from .settings import expected_grib_filenames
-
-SUITE_NAMES = ("dini", "ig", "ifs")
+from .settings import SUITE_NAMES, expected_grib_filenames
 
 HARMONIE_LEVEL_DIM_NAMES = {
     "isobaricInhPa": "pressure",

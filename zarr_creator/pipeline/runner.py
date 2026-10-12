@@ -1,6 +1,6 @@
-"""Periodic runner (port of ``run.sh``).
+"""Periodic runner (port of ``run.sh``), driven by ``python -m zarr_creator run``.
 
-Modes (see ``main``):
+Modes:
 
 - one-shot (default): process a single analysis time — explicit
   ``--t-analysis`` or the most recent eligible one — then exit. Suitable
@@ -9,7 +9,6 @@ Modes (see ``main``):
   already exist, retry conversion on failure, sleep between polls).
 """
 
-import argparse
 import datetime
 import os
 import shutil
@@ -21,16 +20,9 @@ from .. import storage
 from ..settings import (
     LATEST,
     Settings,
-    describe_source_auth,
     refs_dir_for,
     require_utc,
     resolve_t_analysis_for_suite,
-)
-from .cli_args import (
-    T_ANALYSIS_HELP,
-    add_settings_arguments,
-    settings_from_args,
-    t_analysis_arg,
 )
 from .index_refs import build_indexes_and_refs
 
@@ -73,24 +65,9 @@ def mark_refs_done(
 
 def _run_conversion(t_analysis: datetime.datetime, settings: Settings) -> None:
     # Lazy import: keeps this module side-effect free and patchable in tests.
-    from ..__main__ import cli as convert
+    from ..convert import convert
 
-    t_str = require_utc(t_analysis).isoformat()
-    argv = [
-        "--t_analysis",
-        t_str,
-        "--suite-name",
-        settings.suite_name,
-        "--refs-root-path",
-        settings.refs_root_path,
-        "--member-id",
-        settings.member_id,
-        "--dst-zarr-output-path",
-        settings.dst_zarr_output_path,
-    ]
-    if settings.dst_aws_profile:
-        argv += ["--dest-profile", settings.dst_aws_profile]
-    convert(argv)
+    convert(t_analysis, settings)
 
 
 def process_one(
@@ -147,15 +124,9 @@ def poll_once(
 ) -> float:
     """Run a single watch iteration; return seconds to sleep next."""
     t_analysis = resolve_t_analysis_for_suite(LATEST, settings.suite_name, now=now)
-    if refs_done(t_analysis, settings):
-        logger.info(
-            f"Analysis time {t_analysis.isoformat()} is already processed "
-            f"({refs_dir_for(t_analysis, settings)}). "
-            f"Sleeping for {already_done_sleep}s..."
-        )
-        return already_done_sleep
     try:
-        process_one(t_analysis, settings, **process_kwargs)
+        if process_one(t_analysis, settings, **process_kwargs) == "skipped":
+            return already_done_sleep
     except FileNotFoundError as exc:
         # GRIBs arrive hour by hour, so an incomplete analysis time is the
         # normal state until the last file lands (run.sh just retried).
@@ -179,105 +150,3 @@ def watch_loop(
         )
         logger.info(f"Sleeping for {sleep_for}s...")
         time.sleep(sleep_for)
-
-
-def main(argv=None) -> None:
-    """CLI: ``python -m zarr_creator.pipeline.runner [--t-analysis X | --watch]``."""
-    parser = argparse.ArgumentParser(description="Run the NWP zarr conversion pipeline")
-    # --watch always follows the latest analysis time, so a fixed one makes no
-    # sense with it. ``--t-analysis`` defaults to None (= latest) rather than
-    # the "latest" string so argparse reliably detects an explicit value.
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "--t-analysis",
-        type=t_analysis_arg,
-        default=None,
-        help="Process this analysis time once and exit. "
-        + T_ANALYSIS_HELP
-        + f" (default: {LATEST})",
-    )
-    mode.add_argument(
-        "--watch",
-        action="store_true",
-        help="Keep running: poll for the latest analysis time, build indexes/refs "
-        "and convert to zarr when it is available",
-    )
-    parser.add_argument(
-        "--poll-interval",
-        type=float,
-        default=DEFAULT_POLL_INTERVAL,
-        help="With --watch, seconds to sleep between polls " "(default: %(default)s)",
-    )
-    parser.add_argument(
-        "--already-done-sleep",
-        type=float,
-        default=DEFAULT_ALREADY_DONE_SLEEP,
-        help="With --watch, seconds to sleep once the current analysis time has "
-        "already been processed (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=None,
-        help="Give up and exit non-zero after this many failed zarr conversion "
-        "retries (default: retry forever)",
-    )
-    parser.add_argument(
-        "--retry-interval",
-        type=float,
-        default=60,
-        help="Seconds to wait between zarr conversion retries "
-        "(default: %(default)s)",
-    )
-    parser.add_argument(
-        "--no-cleanup",
-        action="store_true",
-        help="Keep the refs and staged GRIB files after a successful conversion "
-        "instead of deleting them (useful during development)",
-    )
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        help="Log level (default: %(default)s)",
-    )
-    add_settings_arguments(parser)
-    args = parser.parse_args(argv)
-
-    logger.remove()
-    import sys
-
-    logger.add(sys.stderr, level=args.log_level.upper())
-
-    settings = settings_from_args(args)
-    logger.info(f"SRC_GRIB_ROOT_URI: {settings.src_grib_root_uri}")
-    logger.info(f"REFS_ROOT_PATH: {settings.refs_root_path}")
-    logger.info(f"SRC_GRIB_TEMP_PATH: {settings.src_grib_temp_path or 'not set'}")
-    logger.info(f"SUITE_NAME: {settings.suite_name}")
-    if settings.src_grib_root_uri.startswith("s3://"):
-        logger.info(
-            f"S3 source auth: "
-            f"{describe_source_auth(settings.src_anon, settings.src_aws_profile)}"
-        )
-
-    if args.watch:
-        watch_loop(
-            settings,
-            poll_interval=args.poll_interval,
-            already_done_sleep=args.already_done_sleep,
-            max_retries=args.max_retries,
-            retry_interval=args.retry_interval,
-            cleanup=not args.no_cleanup,
-        )
-        return
-
-    process_one(
-        resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name),
-        settings,
-        max_retries=args.max_retries,
-        retry_interval=args.retry_interval,
-        cleanup=not args.no_cleanup,
-    )
-
-
-if __name__ == "__main__":
-    main()

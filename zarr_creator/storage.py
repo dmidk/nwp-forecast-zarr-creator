@@ -2,7 +2,7 @@
 
 Single place where URLs become filesystems. All callers pass opaque URLs
 (``s3://bucket/prefix/...`` or local paths) and let fsspec dispatch —
-no ``is_s3`` branching outside this module.
+no ``is_s3`` branching outside this module (use :func:`is_local_uri`).
 
 S3 authentication is profile-only: pass ``profile=<name>`` and endpoint,
 keys, and region resolve from ``~/.aws/config`` + ``~/.aws/credentials``
@@ -10,71 +10,64 @@ via botocore/s3fs.
 """
 
 import os
+import posixpath
 import shutil
 import sys
 
 import fsspec
+from botocore.exceptions import NoCredentialsError
 from fsspec.callbacks import TqdmCallback
+from fsspec.core import strip_protocol
+from fsspec.implementations.local import LocalFileSystem
+from fsspec.utils import get_protocol
 from loguru import logger
-from tqdm import tqdm
 
 
-def _progress(desc: str, total: int):
-    """File-count progress bar (suppressed when stderr is not a TTY)."""
-    return tqdm(desc=desc, total=total, unit="files", disable=not sys.stderr.isatty())
+def _progress_callback(desc: str) -> TqdmCallback:
+    """File-count progress callback for fsspec ``get``/``put``.
 
-
-# s3fs uploads in 50MiB parts by default, so the per-file bar would sit at
-# 0% for minutes on slow links. Smaller parts stream progress more often;
-# S3 requires >=5MiB per part (except the last).
-_S3_PUT_CHUNKSIZE = 8 * 1024 * 1024
-
-
-def _protocols(fs) -> set:
-    protocol = fs.protocol
-    return set(protocol) if isinstance(protocol, (tuple, list)) else {protocol}
-
-
-def _is_local_copy(fs) -> bool:
-    """Whether to copy via the local filesystem (vs fsspec put/get)."""
-    return bool(_protocols(fs) & {"file", "local"})
-
-
-def _show_file_bar(fs) -> bool:
-    """Whether a per-file byte bar is useful (remote transfers only).
-
-    Local and memory transfers don't report byte progress, so a bar would
-    sit at 0% — the outer file-count bar already covers those.
+    Suppressed when stderr is not a TTY (e.g. container logs).
     """
-    return not bool(_protocols(fs) & {"file", "local", "memory"})
-
-
-def _file_bar(desc: str):
-    """Per-file byte progress bar (suppressed when stderr is not a TTY)."""
     return TqdmCallback(
-        tqdm_kwargs={
-            "desc": desc,
-            "unit": "B",
-            "unit_scale": True,
-            "unit_divisor": 1024,
-            "leave": False,
-            "disable": not sys.stderr.isatty(),
-        }
+        tqdm_kwargs={"desc": desc, "unit": "files", "disable": not sys.stderr.isatty()}
     )
 
 
-def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
-    """Resolve ``(filesystem, path)`` for any URL via fsspec.
+def s3_verify_ssl() -> bool:
+    """Whether to verify S3 TLS certificates (env: ``S3_VERIFY_SSL``).
+
+    Defaults to true; set ``S3_VERIFY_SSL=0`` for endpoints whose CA is not
+    in the container's trust store (like ``aws s3 --no-verify-ssl``).
+    """
+    return os.environ.get("S3_VERIFY_SSL", "").lower() not in {"0", "false", "no"}
+
+
+def storage_options(url: str, profile: str | None = None, anon: bool = False) -> dict:
+    """fsspec filesystem kwargs for ``url``.
 
     ``profile``/``anon`` are only forwarded for ``s3://`` URLs. ``anon``
     enables unsigned reads of public buckets (CI fixture consumption).
+    Local filesystems create parent directories on write, which zarr 3's
+    fsspec store relies on.
     """
     if url.startswith("s3://"):
         kwargs: dict = {"anon": anon}
         if profile is not None:
             kwargs["profile"] = profile
-        return fsspec.url_to_fs(url, **kwargs)
-    return fsspec.url_to_fs(url)
+        if not s3_verify_ssl():
+            kwargs["client_kwargs"] = {"verify": False}
+        return kwargs
+    return {"auto_mkdir": True}
+
+
+def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
+    """Resolve ``(filesystem, path)`` for any URL via fsspec."""
+    return fsspec.url_to_fs(url, **storage_options(url, profile, anon))
+
+
+def is_local_uri(uri: str) -> bool:
+    """Whether ``uri`` is on the local filesystem (plain path or ``file://``)."""
+    return get_protocol(uri) in ("file", "local")
 
 
 def exists(url: str, profile: str | None = None, anon: bool = False) -> bool:
@@ -84,17 +77,59 @@ def exists(url: str, profile: str | None = None, anon: bool = False) -> bool:
 
 
 def find_missing(
-    urls: list[str], profile: str | None = None, anon: bool = False
+    root_uri: str,
+    names: list[str],
+    profile: str | None = None,
+    anon: bool = False,
 ) -> list[str]:
-    """Return the subset of ``urls`` that do not exist."""
-    if not urls:
+    """Return the ``names`` (relative to ``root_uri``) that do not exist.
+
+    Lists ``root_uri`` once instead of checking every name: s3fs sends the
+    common prefix of ``names`` as a single, uncached LIST request (so new
+    files show up in long-running watch loops); other filesystems ignore
+    it. A missing root means all names are missing.
+
+    If listing is denied (read-only buckets like the public test fixture
+    allow GET/HEAD but not LIST), each name is checked individually instead.
+    Auth errors propagate when no name can be checked either, so on such a
+    bucket "none of the files exist yet" is reported as an auth error.
+    """
+    if not names:
         return []
-    # Re-resolve per URL so mixed-protocol lists still work.
-    missing = []
-    for url in urls:
-        fs_u, path_u = resolve_fs(url, profile, anon)
-        if not fs_u.exists(path_u):
-            missing.append(url)
+    fs, root = resolve_fs(root_uri, profile, anon)
+    try:
+        found = fs.find(root, prefix=os.path.commonprefix(names))
+    except FileNotFoundError:
+        found = []
+    except Exception as exc:
+        if not _is_auth_error(exc):
+            raise
+        return _find_missing_by_head(fs, root, names, list_error=exc)
+    present = {posixpath.relpath(path, root) for path in found}
+    return [name for name in names if name not in present]
+
+
+def _find_missing_by_head(fs, root: str, names: list[str], list_error: Exception):
+    """Per-name existence checks for when listing ``root`` is denied.
+
+    Without ListBucket, S3 answers HEAD on a missing key with 403 rather
+    than 404, so a denied name counts as missing. If every name is denied,
+    the credentials likely cannot read the bucket at all: re-raise the
+    listing error so callers still get the auth hint.
+    """
+    missing, denied = [], 0
+    for name in names:
+        try:
+            present = fs.exists(posixpath.join(root, name))
+        except Exception as exc:
+            if not _is_auth_error(exc):
+                raise
+            present = False
+            denied += 1
+        if not present:
+            missing.append(name)
+    if denied == len(names):
+        raise list_error
     return missing
 
 
@@ -113,45 +148,44 @@ def download_to_temp(
     """Download ``src_urls`` into ``tmpdir`` (flat layout), return ``tmpdir``.
 
     Skips files that already exist locally (mirrors ``rsync`` /
-    ``download_harmonie_data.sh`` behavior). On partial failure, files
-    downloaded in this call are deleted and the error re-raised.
+    ``download_harmonie_data.sh`` behavior). Files are fetched under a
+    ``.part`` name and renamed once complete, so an interrupted download is
+    never mistaken for a finished one on the next call.
     """
     os.makedirs(tmpdir, exist_ok=True)
-    downloaded_this_attempt: list[str] = []
-    failed: list[str] = []
-    skipped = 0
-    with _progress(f"Downloading to {tmpdir}", total=len(src_urls)) as bar:
-        for url in src_urls:
-            fs, src_path = resolve_fs(url, profile, anon)
-            dst = os.path.join(tmpdir, os.path.basename(src_path.rstrip("/")))
-            if os.path.exists(dst):
-                logger.debug(f"Skipping existing: {dst}")
-                skipped += 1
-                bar.update(1)
-                continue
-            try:
-                if _show_file_bar(fs):
-                    callback = _file_bar(f"↓ {os.path.basename(dst)}")
-                    try:
-                        fs.get_file(src_path, dst, callback=callback)
-                    finally:
-                        callback.close()
-                else:
-                    fs.get_file(src_path, dst)
-                downloaded_this_attempt.append(dst)
-            except Exception:
-                logger.error(f"Failed: {url}")
-                failed.append(url)
-            bar.update(1)
-    if skipped:
-        logger.info(f"Skipped {skipped} existing file(s) in {tmpdir}")
-    if failed:
-        for dst in downloaded_this_attempt:
-            try:
-                os.remove(dst)
-            except OSError:
-                pass
-        raise RuntimeError(f"Failed to download {len(failed)} file(s): {failed}")
+    if not src_urls:
+        return tmpdir
+    protocols = {get_protocol(url) for url in src_urls}
+    if len(protocols) > 1:
+        raise ValueError(
+            f"Source URLs must all be on one filesystem, got: {sorted(protocols)}"
+        )
+    fs, _ = resolve_fs(src_urls[0], profile, anon)
+    todo = []
+    for url in src_urls:
+        src_path = strip_protocol(url)
+        dst = os.path.join(tmpdir, os.path.basename(src_path.rstrip("/")))
+        if os.path.exists(dst):
+            logger.debug(f"Skipping existing: {dst}")
+        else:
+            todo.append((src_path, dst))
+    if len(todo) < len(src_urls):
+        logger.info(f"Skipped {len(src_urls) - len(todo)} existing file(s) in {tmpdir}")
+    if not todo:
+        return tmpdir
+    # A single call lets s3fs fetch the files concurrently.
+    try:
+        with _progress_callback(f"Downloading to {tmpdir}") as callback:
+            fs.get(
+                [src for src, _ in todo],
+                [dst + ".part" for _, dst in todo],
+                callback=callback,
+            )
+    except Exception as exc:
+        logger.error(f"Failed to download {len(todo)} file(s) to {tmpdir}: {exc!r}")
+        raise
+    for _, dst in todo:
+        os.replace(dst + ".part", dst)
     return tmpdir
 
 
@@ -163,45 +197,30 @@ def upload_tree(
 ) -> list[str]:
     """Upload all files under ``local_dir`` (flat) to ``dest_root_uri``."""
     fs, dest_path = resolve_fs(dest_root_uri, profile)
-    uploaded = []
-    is_local = _is_local_copy(fs)
-    show_bar = _show_file_bar(fs)
-    # Smaller parts than s3fs' 50MiB default so the per-file bar advances
-    # steadily; only s3fs understands this kwarg.
-    put_kwargs = {"chunksize": _S3_PUT_CHUNKSIZE} if "s3" in _protocols(fs) else {}
-    if is_local:
-        os.makedirs(dest_path, exist_ok=True)
+    dest_root_uri = dest_root_uri.rstrip("/")
     names = sorted(
         name
         for name in os.listdir(local_dir)
         if os.path.isfile(os.path.join(local_dir, name))
     )
-    with _progress(f"Uploading to {dest_root_uri}", total=len(names)) as bar:
-        for name in names:
-            src = os.path.join(local_dir, name)
-            if is_local:
-                dst = os.path.join(dest_path, name)
-                if not overwrite and os.path.exists(dst):
-                    raise FileExistsError(f"Destination already exists: {dst}")
-                shutil.copy2(src, dst)
-                uploaded.append(dst)
-            else:
-                dst_path = dest_path.rstrip("/") + "/" + name
-                if not overwrite and fs.exists(dst_path):
-                    raise FileExistsError(
-                        f"Destination already exists: {dest_root_uri}/{name}"
-                    )
-                if show_bar:
-                    callback = _file_bar(f"↑ {name}")
-                    try:
-                        fs.put_file(src, dst_path, callback=callback, **put_kwargs)
-                    finally:
-                        callback.close()
-                else:
-                    fs.put_file(src, dst_path, **put_kwargs)
-                uploaded.append(f"{dest_root_uri.rstrip('/')}/{name}")
-            bar.update(1)
-    return uploaded
+    dst_paths = [dest_path.rstrip("/") + "/" + name for name in names]
+    if not overwrite:
+        for name, dst_path in zip(names, dst_paths):
+            if fs.exists(dst_path):
+                raise FileExistsError(
+                    f"Destination already exists: {dest_root_uri}/{name}"
+                )
+    if isinstance(fs, LocalFileSystem):
+        # Object stores need no directories, and s3fs' makedirs would try to
+        # create the bucket if it can't see it.
+        fs.makedirs(dest_path, exist_ok=True)
+    with _progress_callback(f"Uploading to {dest_root_uri}") as callback:
+        fs.put(
+            [os.path.join(local_dir, name) for name in names],
+            dst_paths,
+            callback=callback,
+        )
+    return [f"{dest_root_uri}/{name}" for name in names]
 
 
 def cleanup_temp(path: str) -> None:
@@ -211,33 +230,32 @@ def cleanup_temp(path: str) -> None:
         shutil.rmtree(path)
 
 
-_AUTH_ERROR_MARKERS = (
-    "403",
-    "forbidden",
-    "accessdenied",
-    "invalidaccesskeyid",
-    "signaturedoesnotmatch",
-    "nocredentials",
-    "missingcredentials",
-    "expiredtoken",
-    "invalidclienttokenid",
-)
+# s3fs maps S3's AccessDenied, InvalidAccessKeyId, ExpiredToken,
+# SignatureDoesNotMatch etc. (and bare 403s) to PermissionError; missing
+# credentials surface as botocore's NoCredentialsError.
+_AUTH_ERRORS = (PermissionError, NoCredentialsError)
+
+
+def _is_auth_error(exc: BaseException | None) -> bool:
+    """Whether ``exc``, or an exception it was raised from, is an auth failure."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, _AUTH_ERRORS):
+            return True
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return False
 
 
 def auth_error_hint(exc: Exception, *, anon: bool) -> str | None:
-    """Remediation guidance if ``exc`` looks like an S3 auth failure.
+    """Remediation guidance if ``exc`` is an S3 auth failure.
 
     Returns None for non-auth errors. Catches the classic 403 confusion in
     both directions: unsigned reads against a private bucket, and signed
     reads with bad/missing credentials (or against a public bucket that
     needs no signing).
     """
-    code = ""
-    response = getattr(exc, "response", None)
-    if isinstance(response, dict):
-        code = str(response.get("Error", {}).get("Code", ""))
-    text = f"{code} {exc}".lower()
-    if not any(marker in text for marker in _AUTH_ERROR_MARKERS):
+    if not _is_auth_error(exc):
         return None
     if anon:
         return (

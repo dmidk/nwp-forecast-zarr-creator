@@ -3,9 +3,15 @@
 import warnings
 
 import xarray as xr
+import zarr.storage
 from loguru import logger
 
 from . import storage
+
+# On-disk format for output zarrs. Kept at v2 so readers still on zarr 2
+# (zarr-python<3, older xarray) can open the output; switch to 3 once
+# downstream consumers have migrated to zarr-python 3.
+ZARR_FORMAT = 2
 
 
 def write_output_zarrs(
@@ -64,8 +70,17 @@ def write_output_zarrs(
 
     logger.info(f"Writing to {output_path}")
     fs, path = storage.resolve_fs(output_path, profile)
-    target = fs.get_mapper(path, create=True)
-    ds.to_zarr(target, mode="w", compute=True, consolidated=True)
+    target = zarr.storage.FsspecStore.from_url(
+        fs.unstrip_protocol(path),
+        storage_options=storage.storage_options(output_path, profile),
+    )
+    ds.to_zarr(
+        target,
+        mode="w",
+        compute=True,
+        consolidated=True,
+        zarr_format=ZARR_FORMAT,
+    )
 
     logger.info("done!")
 

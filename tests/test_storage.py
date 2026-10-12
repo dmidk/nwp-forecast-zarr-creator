@@ -20,14 +20,43 @@ def test_resolve_local_and_memory():
     assert path_m == "/bucket/file"
 
 
+@pytest.mark.parametrize(
+    "value, verify", [(None, True), ("1", True), ("0", False), ("false", False)]
+)
+def test_s3_verify_ssl_env(monkeypatch, value, verify):
+    if value is None:
+        monkeypatch.delenv("S3_VERIFY_SSL", raising=False)
+    else:
+        monkeypatch.setenv("S3_VERIFY_SSL", value)
+    assert storage.s3_verify_ssl() is verify
+    fs, _ = storage.resolve_fs("s3://bucket/key", anon=True)
+    assert fs.client_kwargs.get("verify", True) is verify
+
+
+@pytest.mark.parametrize(
+    "uri, local",
+    [
+        ("/mnt/data/ml", True),
+        ("relative/ml", True),
+        ("file:///mnt/data/ml", True),
+        ("local:///mnt/data/ml", True),
+        ("s3://bucket/ml", False),
+        ("memory://bucket/ml", False),
+    ],
+)
+def test_is_local_uri(uri, local):
+    assert storage.is_local_uri(uri) is local
+
+
 def test_exists_and_find_missing_local(tmp_path):
     a = str(tmp_path / "a")
     _write(a)
     assert storage.exists(a)
     assert not storage.exists(str(tmp_path / "nope"))
-    missing = storage.find_missing([a, str(tmp_path / "nope")])
-    assert missing == [str(tmp_path / "nope")]
-    assert storage.find_missing([]) == []
+    assert storage.find_missing(str(tmp_path), ["a", "nope"]) == ["nope"]
+    assert storage.find_missing(str(tmp_path), []) == []
+    # a missing root means everything is missing
+    assert storage.find_missing(str(tmp_path / "gone"), ["a"]) == ["a"]
 
 
 def test_exists_memory():
@@ -35,9 +64,79 @@ def test_exists_memory():
     fs.pipe("memory://test-exists/f", b"x")
     assert storage.exists("memory://test-exists/f")
     assert not storage.exists("memory://test-exists/missing")
-    assert storage.find_missing(
-        ["memory://test-exists/f", "memory://test-exists/missing"]
-    ) == ["memory://test-exists/missing"]
+    assert storage.find_missing("memory://test-exists", ["f", "missing"]) == ["missing"]
+    # names may include subdirectories of the root
+    fs.pipe("memory://test-exists/sub/g", b"x")
+    assert storage.find_missing("memory://test-exists", ["sub/g", "sub/h"]) == ["sub/h"]
+
+
+def test_find_missing_lists_once_with_common_prefix(monkeypatch):
+    calls = []
+
+    class FakeFS:
+        def find(self, path, **kwargs):
+            calls.append((path, kwargs))
+            return [f"{path}/fc2025030206+000x_sf"]
+
+    monkeypatch.setattr(
+        storage, "resolve_fs", lambda url, profile=None, anon=False: (FakeFS(), "b/ml")
+    )
+    names = ["fc2025030206+000x_sf", "fc2025030206+001x_sf"]
+    assert storage.find_missing("s3://b/ml", names) == ["fc2025030206+001x_sf"]
+    assert calls == [("b/ml", {"prefix": "fc2025030206+00"})]
+
+
+def test_find_missing_propagates_auth_errors(monkeypatch):
+    list_error = PermissionError("Access Denied")
+
+    class DeniedFS:
+        def find(self, path, **kwargs):
+            raise list_error
+
+        def exists(self, path):
+            raise PermissionError("Forbidden")
+
+    monkeypatch.setattr(
+        storage, "resolve_fs", lambda url, profile=None, anon=False: (DeniedFS(), "b")
+    )
+    with pytest.raises(PermissionError) as excinfo:
+        storage.find_missing("s3://b", ["x", "y"])
+    assert excinfo.value is list_error
+
+
+def test_find_missing_falls_back_to_head_when_listing_denied(monkeypatch):
+    class NoListFS:
+        def find(self, path, **kwargs):
+            raise PermissionError("Access Denied")
+
+        def exists(self, path):
+            return path == "b/ml/present"
+
+    monkeypatch.setattr(
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (NoListFS(), "b/ml"),
+    )
+    assert storage.find_missing("s3://b/ml", ["present", "absent"]) == ["absent"]
+
+
+def test_find_missing_head_fallback_treats_denied_name_as_missing(monkeypatch):
+    # Without ListBucket, S3 answers HEAD on a missing key with 403
+    class NoListFS:
+        def find(self, path, **kwargs):
+            raise PermissionError("Access Denied")
+
+        def exists(self, path):
+            if path == "b/ml/present":
+                return True
+            raise PermissionError("Forbidden")
+
+    monkeypatch.setattr(
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (NoListFS(), "b/ml"),
+    )
+    assert storage.find_missing("s3://b/ml", ["present", "absent"]) == ["absent"]
 
 
 def test_download_memory_to_temp(tmp_path):
@@ -56,15 +155,52 @@ def test_download_memory_to_temp(tmp_path):
     )
 
 
-def test_download_partial_failure_cleans_up(tmp_path):
+def test_download_failure_raises_original_error(tmp_path):
     fs, _ = storage.resolve_fs("memory://test-partial/")
     fs.pipe("memory://test-partial/good", b"x")
-    with pytest.raises(RuntimeError, match="Failed to download 1"):
+    stage = str(tmp_path / "stage")
+    with pytest.raises(FileNotFoundError, match="bad"):
         storage.download_to_temp(
-            ["memory://test-partial/good", "memory://test-partial/bad"],
-            str(tmp_path / "stage"),
+            ["memory://test-partial/good", "memory://test-partial/bad"], stage
         )
-    assert os.listdir(str(tmp_path / "stage")) == []
+    # Nothing is left under a final name, so a retry fetches everything again.
+    assert [f for f in os.listdir(stage) if not f.endswith(".part")] == []
+    fs.pipe("memory://test-partial/bad", b"y")
+    storage.download_to_temp(
+        ["memory://test-partial/good", "memory://test-partial/bad"], stage
+    )
+    assert sorted(os.listdir(stage)) == ["bad", "good"]
+
+
+def test_interrupted_download_is_not_reused(tmp_path, monkeypatch):
+    """A file cut off mid-transfer must be fetched again, not skipped."""
+    from fsspec.implementations.memory import MemoryFileSystem
+
+    fs, _ = storage.resolve_fs("memory://test-interrupt/")
+    fs.pipe("memory://test-interrupt/f", b"complete")
+    stage = str(tmp_path / "stage")
+    real_get_file = MemoryFileSystem.get_file
+
+    def get_half_then_fail(self, rpath, lpath, **kwargs):
+        with open(lpath, "wb") as f:
+            f.write(b"comp")
+        raise ConnectionResetError("connection reset")
+
+    monkeypatch.setattr(MemoryFileSystem, "get_file", get_half_then_fail)
+    with pytest.raises(ConnectionResetError):
+        storage.download_to_temp(["memory://test-interrupt/f"], stage)
+    monkeypatch.setattr(MemoryFileSystem, "get_file", real_get_file)
+
+    storage.download_to_temp(["memory://test-interrupt/f"], stage)
+    with open(os.path.join(stage, "f"), "rb") as f:
+        assert f.read() == b"complete"
+
+
+def test_download_rejects_mixed_filesystems(tmp_path):
+    with pytest.raises(ValueError, match="one filesystem"):
+        storage.download_to_temp(
+            ["memory://test-mixed/a", str(tmp_path / "b")], str(tmp_path / "stage")
+        )
 
 
 def test_upload_tree_local(tmp_path):
@@ -104,48 +240,56 @@ def test_join():
     assert storage.join("/mnt/root/", "f") == "/mnt/root/f"
 
 
-class _Fake403(Exception):
-    def __init__(self):
-        super().__init__("An error occurred (403) when calling HeadObject: Forbidden")
-        self.response = {"Error": {"Code": "403"}}
+def _forbidden():
+    # What s3fs raises for a 403 / AccessDenied response.
+    return PermissionError("Forbidden")
 
 
 def test_auth_error_hint_anon_points_to_signing():
-    hint = storage.auth_error_hint(_Fake403(), anon=True)
+    hint = storage.auth_error_hint(_forbidden(), anon=True)
     assert hint is not None
     assert "SRC_ANON" in hint
     assert "SRC_AWS_PROFILE" in hint
 
 
 def test_auth_error_hint_signed_points_to_anon():
-    hint = storage.auth_error_hint(_Fake403(), anon=False)
+    hint = storage.auth_error_hint(_forbidden(), anon=False)
     assert hint is not None
     assert "SRC_ANON=1" in hint
+
+
+def test_auth_error_hint_detects_missing_and_chained_credentials_errors():
+    from botocore.exceptions import NoCredentialsError
+
+    assert storage.auth_error_hint(NoCredentialsError(), anon=False) is not None
+    try:
+        try:
+            raise _forbidden()
+        except PermissionError as exc:
+            raise RuntimeError("listing failed") from exc
+    except RuntimeError as wrapped:
+        assert storage.auth_error_hint(wrapped, anon=False) is not None
 
 
 def test_auth_error_hint_ignores_non_auth_errors():
     assert storage.auth_error_hint(RuntimeError("boom"), anon=True) is None
     assert storage.auth_error_hint(RuntimeError("boom"), anon=False) is None
     assert storage.auth_error_hint(FileNotFoundError("missing"), anon=True) is None
+    # Analysis times like 2026-04-03 contain "403"; that is not an auth error.
+    exc = OSError("Failed to fetch s3://b/ml/fc2026040300+012CONTROL__dmi_sf")
+    assert storage.auth_error_hint(exc, anon=False) is None
 
 
-def test_show_file_bar_only_for_remote():
-    s3fs = pytest.importorskip("s3fs")
-    fs_s3 = s3fs.S3FileSystem(anon=True)
-    assert storage._show_file_bar(fs_s3)
-    fs_local, _ = storage.resolve_fs("/tmp/whatever")
-    assert not storage._show_file_bar(fs_local)
-    fs_mem, _ = storage.resolve_fs("memory://whatever")
-    assert not storage._show_file_bar(fs_mem)
+def test_upload_tree_object_store_uses_one_put_and_no_makedirs(tmp_path, monkeypatch):
+    """Upload in one ``put`` call; never ``makedirs`` on an object store.
 
-
-def test_upload_to_s3_uses_small_chunks_for_progress(tmp_path, monkeypatch):
-    """s3fs' 50MiB default parts stall the per-file bar; assert override."""
+    s3fs' ``makedirs`` tries to create the bucket when it can't see it.
+    """
     src = tmp_path / "src"
     src.mkdir()
-    (src / "a.bin").write_bytes(b"x" * 100)
-
-    seen = {}
+    (src / "b.bin").write_bytes(b"b")
+    (src / "a.bin").write_bytes(b"a")
+    puts = []
 
     class FakeS3:
         protocol = "s3"
@@ -153,14 +297,29 @@ def test_upload_to_s3_uses_small_chunks_for_progress(tmp_path, monkeypatch):
         def exists(self, path):
             return False
 
-        def put_file(self, src, dst, callback=None, **kwargs):
-            seen.update(kwargs)
-            seen["callback"] = callback
+        def makedirs(self, path, exist_ok=False):
+            raise AssertionError("makedirs must not be called on an object store")
+
+        def put(self, lpaths, rpaths, callback=None):
+            puts.append((lpaths, rpaths))
 
     monkeypatch.setattr(
-        storage, "resolve_fs", lambda url, profile=None, anon=False: (FakeS3(), "dest")
+        storage,
+        "resolve_fs",
+        lambda url, profile=None, anon=False: (FakeS3(), "b/dest"),
     )
-    uploaded = storage.upload_tree(str(src), "s3://bucket/dest")
-    assert uploaded == ["s3://bucket/dest/a.bin"]
-    assert seen["chunksize"] == storage._S3_PUT_CHUNKSIZE
-    assert seen["callback"] is not None
+    uploaded = storage.upload_tree(str(src), "s3://b/dest/")
+    assert uploaded == ["s3://b/dest/a.bin", "s3://b/dest/b.bin"]
+    assert puts == [
+        ([str(src / "a.bin"), str(src / "b.bin")], ["b/dest/a.bin", "b/dest/b.bin"])
+    ]
+
+
+def test_upload_tree_file_url_creates_directory(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.txt").write_text("a")
+    dest = tmp_path / "new" / "dst"
+    uploaded = storage.upload_tree(str(src), f"file://{dest}")
+    assert uploaded == [f"file://{dest}/a.txt"]
+    assert (dest / "a.txt").read_text() == "a"

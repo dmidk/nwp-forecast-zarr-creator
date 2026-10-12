@@ -115,6 +115,7 @@ def ifs_zarr(tmp_path_factory):
     out = tmp_path / "out"
     cli(
         [
+            "convert",
             "--t-analysis",
             T_ANALYSIS.isoformat(),
             "--suite-name",

@@ -25,6 +25,8 @@ DEFAULT_REFS_ROOT_PATH = "/home/ec2-user/nwp-forecast-zarr-creator/refs"
 DEFAULT_MEMBER_ID = "CONTROL__dmi"
 DEFAULT_MAX_HOUR = 36
 DEFAULT_SUITE_NAME = "dini"
+# Lowercase only; the name also fills {suite_name} in output paths.
+SUITE_NAMES = ("dini", "ig", "ifs")
 DEFAULT_DST_ZARR_OUTPUT_PATH = "file:///tmp/{suite_name}-recent/{dataset_id}.zarr"
 
 FILE_TYPES = ("sf", "pl")
@@ -53,12 +55,20 @@ class Settings:
     dst_aws_profile: str | None = None
     # Unsigned S3 reads (public CI fixture bucket). Never used for writes.
     src_anon: bool = False
-    # Raw env snapshot for provenance/debugging (no secrets stored here).
-    _from_alias: bool = field(default=False, repr=False)
     # Whether max_hour/member_id are the suite's defaults (not set via env or
     # flag), so that switching suite also switches them.
     _max_hour_is_default: bool = field(default=False, repr=False)
     _member_id_is_default: bool = field(default=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # Checked here rather than in each CLI so that code passing its own
+        # Settings to the runner also fails before indexing; the conversion
+        # retry loop would otherwise retry an unsupported suite forever.
+        if self.suite_name not in SUITE_NAMES:
+            raise ValueError(
+                f"SUITE_NAME must be one of {', '.join(SUITE_NAMES)}, "
+                f"got: {self.suite_name!r}"
+            )
 
 
 def set_suite(settings: Settings, suite_name: str) -> Settings:
@@ -74,8 +84,8 @@ def set_suite(settings: Settings, suite_name: str) -> Settings:
     return settings
 
 
-def _resolve_src_root() -> tuple[str, bool]:
-    """Return (value, from_alias) for the GRIB source root URI."""
+def _resolve_src_root() -> str:
+    """Return the GRIB source root URI, accepting deprecated aliases."""
     for name in ("SRC_GRIB_ROOT_URI", "SRC_GRIB_ROOT", "SRC_GRIB_ROOT_PATH"):
         value = os.environ.get(name)
         if value:
@@ -85,14 +95,13 @@ def _resolve_src_root() -> tuple[str, bool]:
                     DeprecationWarning,
                     stacklevel=3,
                 )
-                return value, True
-            return value, False
-    return DEFAULT_SRC_GRIB_ROOT_URI, False
+            return value
+    return DEFAULT_SRC_GRIB_ROOT_URI
 
 
 def load_settings() -> Settings:
     """Load settings from environment variables."""
-    src_root, from_alias = _resolve_src_root()
+    src_root = _resolve_src_root()
 
     max_hour_raw = _getenv("MAX_HOUR", str(DEFAULT_MAX_HOUR))
     try:
@@ -107,7 +116,7 @@ def load_settings() -> Settings:
         refs_root_path=_getenv("REFS_ROOT_PATH", DEFAULT_REFS_ROOT_PATH),  # type: ignore[arg-type]
         member_id=_getenv("MEMBER_ID", DEFAULT_MEMBER_ID),  # type: ignore[arg-type]
         max_hour=max_hour,
-        suite_name=DEFAULT_SUITE_NAME,
+        suite_name=_getenv("SUITE_NAME", DEFAULT_SUITE_NAME),  # type: ignore[arg-type]
         src_grib_temp_path=os.environ.get("SRC_GRIB_TEMP_PATH") or None,
         dst_zarr_output_path=_getenv(  # type: ignore[arg-type]
             "DST_ZARR_OUTPUT_PATH", DEFAULT_DST_ZARR_OUTPUT_PATH
@@ -119,25 +128,10 @@ def load_settings() -> Settings:
         or os.environ.get("AWS_PROFILE")
         or None,
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
-        _from_alias=from_alias,
         _max_hour_is_default=_getenv("MAX_HOUR") is None,
         _member_id_is_default=_getenv("MEMBER_ID") is None,
     )
-    return set_suite(settings, _getenv("SUITE_NAME", DEFAULT_SUITE_NAME))  # type: ignore[arg-type]
-
-
-def source_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for source reads.
-
-    Precedence: explicit CLI flag > ``SRC_AWS_PROFILE`` > ``AWS_PROFILE``.
-    Endpoint/keys/region resolve from ``~/.aws`` via the named profile.
-    """
-    return explicit or settings.src_aws_profile
-
-
-def dest_profile(settings: Settings, explicit: str | None = None) -> str | None:
-    """Resolve the AWS profile for destination writes (same chain, ``DST_``)."""
-    return explicit or settings.dst_aws_profile
+    return set_suite(settings, settings.suite_name)
 
 
 def describe_source_auth(anon: bool, profile: str | None) -> str:
@@ -159,26 +153,66 @@ def require_utc(t_analysis: datetime.datetime) -> datetime.datetime:
 
 
 DEFAULT_ANALYSIS_INTERVAL_HOURS = 3
-DEFAULT_LAG_HOURS = 2
+DEFAULT_ANALYSIS_LAG_HOURS = 2
 # Sentinel for "the most recent analysis time that should be available".
 LATEST = "latest"
 
 
+def get_analysis_interval_in_hours(
+    default: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
+) -> int:
+    """Hours between analysis times (env: ``ANALYSIS_INTERVAL_HOURS``).
+
+    Must divide 24 so the analysis times fall on the same hours every day.
+    """
+    raw = _getenv("ANALYSIS_INTERVAL_HOURS", str(default))
+    try:
+        hours = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"ANALYSIS_INTERVAL_HOURS must be an integer, got: {raw!r}"
+        ) from exc
+    if hours <= 0 or 24 % hours != 0:
+        raise ValueError(
+            f"ANALYSIS_INTERVAL_HOURS must divide 24 (1, 2, 3, 4, 6, 8, 12 or 24), "
+            f"got: {hours}"
+        )
+    return hours
+
+
+def get_analysis_lag_in_hours(default: float = DEFAULT_ANALYSIS_LAG_HOURS) -> float:
+    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``)."""
+    raw = _getenv("ANALYSIS_LAG_HOURS", str(default))
+    try:
+        hours = float(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"ANALYSIS_LAG_HOURS must be a number, got: {raw!r}") from exc
+    if hours < 0:
+        raise ValueError(f"ANALYSIS_LAG_HOURS must be >= 0, got: {hours}")
+    return hours
+
+
 def compute_analysis_time(
     now: datetime.datetime,
-    lag_hours: float = DEFAULT_LAG_HOURS,
-    interval_hours: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
+    lag_hours: float | None = None,
+    interval_hours: int | None = None,
 ) -> datetime.datetime:
     """Most recent analysis time, allowing ``lag_hours`` for delivery.
 
-    Subtracts the lag from ``now`` and floors to the ``interval_hours`` grid,
-    e.g. at 05:00 UTC with a 2h lag and 3h interval the result is 03:00 UTC.
+    Subtracts the lag from ``now`` and floors to the analysis interval, e.g.
+    at 05:00 UTC with a 2h lag and a 3h interval the result is 03:00 UTC.
+    Unset arguments come from ``ANALYSIS_LAG_HOURS`` and
+    ``ANALYSIS_INTERVAL_HOURS`` (defaults 2 and 3).
     """
+    if lag_hours is None:
+        lag_hours = get_analysis_lag_in_hours()
+    if interval_hours is None:
+        interval_hours = get_analysis_interval_in_hours()
     if now.tzinfo is None:
         now = now.replace(tzinfo=datetime.timezone.utc)
     adjusted = now - datetime.timedelta(hours=lag_hours)
-    epoch = int(adjusted.timestamp())
     interval_seconds = interval_hours * 3600
+    epoch = int(adjusted.timestamp())
     rounded = epoch // interval_seconds * interval_seconds
     return datetime.datetime.fromtimestamp(rounded, tz=datetime.timezone.utc)
 
@@ -190,8 +224,8 @@ def is_latest(value) -> bool:
 def resolve_t_analysis(
     value: str | datetime.datetime | None,
     now: datetime.datetime | None = None,
-    lag_hours: float = DEFAULT_LAG_HOURS,
-    interval_hours: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
+    lag_hours: float | None = None,
+    interval_hours: int | None = None,
 ) -> datetime.datetime:
     """Turn a ``--t-analysis`` value into a UTC datetime.
 
@@ -216,15 +250,21 @@ def resolve_t_analysis_for_suite(
     suite_name: str,
     now: datetime.datetime | None = None,
 ) -> datetime.datetime:
-    """:func:`resolve_t_analysis` using the suite's cycle interval and lag."""
+    """:func:`resolve_t_analysis` using the suite's cycle interval and lag.
+
+    ``ANALYSIS_LAG_HOURS`` / ``ANALYSIS_INTERVAL_HOURS`` override the suite's
+    values when set.
+    """
     from .suites import get_suite
 
     suite = get_suite(suite_name)
     return resolve_t_analysis(
         value,
         now=now,
-        lag_hours=suite.lag_hours,
-        interval_hours=suite.analysis_interval_hours,
+        lag_hours=get_analysis_lag_in_hours(default=suite.lag_hours),
+        interval_hours=get_analysis_interval_in_hours(
+            default=suite.analysis_interval_hours
+        ),
     )
 
 

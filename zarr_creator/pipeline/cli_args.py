@@ -14,19 +14,20 @@ from ..settings import (
     DEFAULT_SRC_GRIB_ROOT_URI,
     DEFAULT_SUITE_NAME,
     LATEST,
+    SUITE_NAMES,
     Settings,
     is_latest,
     load_settings,
     resolve_t_analysis,
     set_suite,
 )
-from ..suites import SUITE_NAMES
 
 T_ANALYSIS_HELP = (
     "Analysis time as an ISO8601 string with a timezone, e.g. "
     f"2025-03-02T00:00:00Z, or '{LATEST}' for the most recent analysis time "
     "of the suite (now minus the delivery lag, floored to the cycle interval: "
-    "2h lag and 3h cycles for dini/ig, 7h lag and 6h cycles for ifs)"
+    "2h lag and 3h cycles for dini/ig, 7h lag and 6h cycles for ifs; "
+    "ANALYSIS_LAG_HOURS / ANALYSIS_INTERVAL_HOURS override both)"
 )
 
 
