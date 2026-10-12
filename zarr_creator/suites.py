@@ -31,6 +31,8 @@ from typing import Callable
 import numpy as np
 import xarray as xr
 
+from .settings import DEFAULT_ANALYSIS_INTERVAL_HOURS as HARMONIE_INTERVAL_HOURS
+from .settings import DEFAULT_ANALYSIS_LAG_HOURS as HARMONIE_LAG_HOURS
 from .settings import DEFAULT_MAX_HOUR as HARMONIE_MAX_HOUR
 from .settings import DEFAULT_MEMBER_ID as HARMONIE_MEMBER_ID
 from .settings import SUITE_NAMES, expected_grib_filenames
@@ -100,8 +102,10 @@ def _from_module(name: str, module: ModuleType) -> Suite:
         ),
         make_magician=getattr(module, "make_magician", _harmonie_magician),
         index_next_to_source=getattr(module, "INDEX_NEXT_TO_SOURCE", True),
-        analysis_interval_hours=getattr(module, "ANALYSIS_INTERVAL_HOURS", 3),
-        lag_hours=getattr(module, "LAG_HOURS", 2),
+        analysis_interval_hours=getattr(
+            module, "ANALYSIS_INTERVAL_HOURS", HARMONIE_INTERVAL_HOURS
+        ),
+        lag_hours=getattr(module, "LAG_HOURS", HARMONIE_LAG_HOURS),
         default_max_hour=getattr(module, "DEFAULT_MAX_HOUR", HARMONIE_MAX_HOUR),
         default_member_id=getattr(module, "DEFAULT_MEMBER_ID", HARMONIE_MEMBER_ID),
         level_dim_names=getattr(module, "LEVEL_DIM_NAMES", HARMONIE_LEVEL_DIM_NAMES),

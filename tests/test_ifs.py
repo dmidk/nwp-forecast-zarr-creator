@@ -38,16 +38,31 @@ def test_grib_filenames():
     assert names[-1].endswith("_20260928T120000Z_20261001T120000Z_72h")
 
 
-def test_latest_analysis_time_per_suite():
+@pytest.mark.parametrize(
+    "suite_name, now, expected",
+    [
+        # dini/ig: 2h lag, 3-hourly. A cycle becomes "latest" exactly 2h after
+        # it starts, which pins both the lag and the interval
+        ("dini", (13, 30), (9,)),
+        ("dini", (10, 59), (6,)),
+        ("dini", (11, 0), (9,)),
+        # ifs: 7h lag, 6-hourly
+        ("ifs", (13, 30), (6,)),
+        ("ifs", (12, 59), (0,)),
+        ("ifs", (13, 0), (6,)),
+    ],
+)
+def test_latest_analysis_time_per_suite(monkeypatch, suite_name, now, expected):
+    monkeypatch.delenv("ANALYSIS_LAG_HOURS", raising=False)
+    monkeypatch.delenv("ANALYSIS_INTERVAL_HOURS", raising=False)
+    t = s.resolve_t_analysis_for_suite(
+        "latest", suite_name, now=_utc(2026, 9, 28, *now)
+    )
+    assert t == _utc(2026, 9, 28, *expected)
+
+
+def test_explicit_analysis_time_ignores_suite_lag():
     now = _utc(2026, 9, 28, 13, 30)
-    # dini/ig: 2h lag, 3-hourly
-    assert s.resolve_t_analysis_for_suite("latest", "dini", now=now) == _utc(
-        2026, 9, 28, 9
-    )
-    # ifs: 7h lag, 6-hourly
-    assert s.resolve_t_analysis_for_suite("latest", "ifs", now=now) == _utc(
-        2026, 9, 28, 6
-    )
     assert s.resolve_t_analysis_for_suite(
         "2026-09-28T00:00:00Z", "ifs", now=now
     ) == _utc(2026, 9, 28)
@@ -308,7 +323,11 @@ def test_specific_humidity_saturated_at_1000hpa():
 
 def test_ifs_suite_registered():
     suite = get_suite("ifs")
-    assert suite.analysis_interval_hours == 6
+    # compared with the config constants too, so that a misspelled constant
+    # (silently replaced by the HARMONIE default) fails here
+    assert suite.analysis_interval_hours == config_ifs.ANALYSIS_INTERVAL_HOURS == 6
+    assert suite.lag_hours == config_ifs.LAG_HOURS == 7
+    assert suite.default_member_id == config_ifs.DEFAULT_MEMBER_ID == "control"
     assert suite.index_next_to_source is False
     assert suite.clip_to_bounds is config_ifs.clip_to_bounds
     assert get_suite("dini").index_next_to_source is True
