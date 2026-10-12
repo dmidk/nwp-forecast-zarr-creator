@@ -77,20 +77,41 @@ Output destinations come from `DST_ZARR_OUTPUT_PATH` (default:
 The `ifs` suite converts ECMWF IFS control forecasts (formerly HRES) as
 delivered to DMI's ECMWF cache on Scale (`/dmidata/cache/mdcprd/gdb/ecmwf/`,
 files `dei_dj_ifs-ens-cf_od_oper_fc_<base>_<valid>_<step>h`, one per cycle
-and step, 0.1° lat/lon). It writes a single `ifs.zarr` per cycle, laid out as
-the ANNA boundary datastore expects (see the contract in
-`mlwm-deployment/configurations/ANNA/configs/ifs_7deg_model1_config.yaml`):
+and step, 0.1° lat/lon). It writes a single `ifs.zarr` per cycle with:
 
-- ERA5/WeatherBench2 variable names
+- ERA5/WeatherBench2 variable names, as ANNA's boundary input uses
 - dims `time` (analysis time), `prediction_timedelta`, `level` (hPa),
   `latitude` and `longitude`
-- regridded linearly to 0.25° over lat 40.25–71.75, lon −19.5–32.0
+- the native 0.1° grid (latitudes north to south) and all delivered pressure
+  levels (50–1000 hPa, no 600 hPa), optionally clipped to a lat/lon box
+
+There's no regridding. ANNA's boundary contract (a 0.25° ERA5 grid over lat
+40.0–72.0, lon −27.0–39.5 with 8 levels including 600 hPa, see the header of
+`src/anna_inference/boundary/ifs_7deg_model1_config.yaml` in
+[dmidk/mlwp-inference-container-anna](https://github.com/dmidk/mlwp-inference-container-anna))
+is left to ANNA's own pipeline, which regrids this output.
+
+To keep the output small, clip it with `--clip-lat-min`, `--clip-lat-max`,
+`--clip-lon-min` and `--clip-lon-max` (env `CLIP_LAT_MIN` etc.), in degrees
+north and east, longitudes in −180..180. Each bound is optional and
+inclusive, and one more grid point is kept beyond each one, so that a later
+linear regrid onto points exactly on the edge interpolates rather than
+extrapolates. The bounds are recorded as `clip_*` attributes of the zarr.
+For ANNA's boundary box:
+
+```bash
+--clip-lat-min 40 --clip-lat-max 72 --clip-lon-min -27 --clip-lon-max 39.5
+```
+
+Clipping is only supported for `ifs`; the HARMONIE suites are on a projected
+grid.
 
 The suite changes some defaults:
 
 - cycles are 6-hourly with a 7h delivery lag for `--t-analysis latest`
   (unless `ANALYSIS_INTERVAL_HOURS` / `ANALYSIS_LAG_HOURS` are set)
-- `MAX_HOUR` defaults to 72, and steps go every 3h
+- steps go every 3h, up to `MAX_HOUR` (default 36, as for the other suites;
+  see below for what ANNA needs)
 - `MEMBER_ID` defaults to `control`
 - the `.index` files are written to the refs directory, not next to the
   source files, since the ECMWF cache is shared
@@ -103,15 +124,69 @@ uv run python -m zarr_creator run --suite-name ifs \
 ```
 
 The variable mapping (IFS shortName → output name) is in
-`zarr_creator/config_ifs.py`. Three pressure-level fields aren't delivered
-as ANNA needs them, so they are derived:
+`zarr_creator/config_ifs.py`. Two pressure-level fields aren't delivered as
+ERA5 has them, so they are derived:
 
 - `geopotential` = geopotential height `gh` × 9.80665 (exact)
 - `specific_humidity` comes from relative humidity `r` and temperature `t`,
   using the IFS's mixed-phase saturation vapour pressure. That inverts how
   the IFS defines `r`, so it's close to exact.
-- 600 hPa isn't delivered, so all variables there are interpolated linearly
-  in ln(p) between 500 and 700 hPa. This is an approximation.
+
+#### How the IFS output lines up with DINI in ANNA
+
+Each IFS cycle is converted on its own; nothing in this repo pairs IFS
+cycles with DINI runs. ANNA does that when it builds its inference input
+(`boundary_to_valid_time` in mlwp-inference-container-anna), after
+regridding, and it can only use what this repo has written by then.
+
+**In training** ANNA's interior was DANRA (3-hourly) and its boundary was
+ERA5 reanalysis, 6-hourly at 00/06/12/18 UTC. For each predicted time `t`,
+neural-lam takes the boundary at `b`, the last 6-hourly time at or before
+`t`, plus `b − 6h` and `b + 6h`. So the boundary was always an analysis
+valid at exactly those times, with no forecast lead, and it included the
+"truth" 6h ahead. IFS forecasts were only used to evaluate the model, not to
+train it.
+
+**In operations** the interior is a DINI run (3-hourly cycles). ANNA takes
+the latest IFS cycle at or before the DINI analysis time, turns each lead
+time into a valid time (cycle + `prediction_timedelta`) and then picks the
+same 6-hourly windows as in training. The layout is therefore what the model
+was trained on, but the values are forecasts, and their lead time grows with
+how old the IFS cycle is and how far ahead ANNA forecasts.
+
+Example, a DINI 03Z run with ANNA's default 18h forecast: ANNA predicts 09Z
+to 21Z, so it needs the boundary valid at 00Z, 06Z, 12Z, 18Z and 00Z the
+next day.
+
+| IFS cycle used | Lead times needed |
+|---|---|
+| 00Z the same day, if it has arrived | 0–24h |
+| 18Z the day before (the 00Z cycle isn't in yet, with the 7h lag) | 6–30h |
+
+In general the longest lead time needed is the time from the IFS cycle to
+6h after the last 00/06/12/18 UTC time at or before the end of the ANNA
+forecast. With the 6h cycle and 7h lag the newest IFS cycle is 6–9h older
+than the DINI run, so:
+
+- the default `MAX_HOUR=36` covers ANNA's default 18h forecast (up to 30h
+  needed)
+- ANNA's longest forecast, 30h, needs up to 42h, so set `MAX_HOUR=42` or more
+- if an IFS cycle is late or missing, an older one has to be used, which
+  needs correspondingly longer lead times (6h more per cycle skipped)
+
+Where the IFS boundary still differs from training:
+
+- it is a forecast, not a reanalysis, and is normalised with the ERA5
+  training statistics
+- `geopotential` and `specific_humidity` are derived here (see above), and
+  ANNA's pipeline regrids to 0.25° and interpolates the 600 hPa level
+- the static fields (`land_sea_mask`, `geopotential_at_surface`) come from
+  IFS, not ERA5
+
+ANNA can also use DINI itself as the boundary (its current default), but
+that only works for 00/06/12/18Z runs and a quarter of the boundary points
+lie outside DINI and are filled from the nearest DINI edge point. IFS covers
+the whole boundary and also works for the 03/09/15/21Z DINI runs.
 
 ## Runtime Defaults
 
@@ -134,13 +209,14 @@ before running, or by passing the corresponding CLI flag (e.g.
 | `SRC_GRIB_TEMP_PATH` | _unset_ | `/tmp/nwp-forecast-zarr-creator` | If set, GRIB files are staged here before indexing. If unset, files are indexed in place from `SRC_GRIB_ROOT_URI` (S3 sources without a staging path log a warning). |
 | `DST_ZARR_OUTPUT_PATH` | `file:///tmp/{suite_name}-recent/{dataset_id}.zarr` | `s3://harmonie-zarr/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr` | Full output-path format string (`{suite_name}`, `{member}`, `{t_analysis}`, `{dataset_id}`), written via fsspec (local path or `s3://`). Must contain `{dataset_id}`; without `{t_analysis}` each run overwrites the previous output. |
 | `MEMBER_ID` | `CONTROL__dmi` (`control` for `ifs`) | *as built-in default* | Forecast member identifier in file names (IFS file names have none; it's only used in the refs path). |
-| `MAX_HOUR` | `36` (`72` for `ifs`) | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`; every 3h for `ifs`). |
+| `MAX_HOUR` | `36` | *as built-in default* | Maximum forecast hour included (inclusive, `000..MAX_HOUR`; every 3h for `ifs`). |
 | `SUITE_NAME` | `dini` | *unset (uses default)* | Defines the config file to use for converting GRIB files. Valid options are `dini`, `ig` and `ifs`. |
 | `SRC_AWS_PROFILE` / `DST_AWS_PROFILE` | _unset_ | _unset_ | AWS profile for source reads / destination writes, each falling back to `AWS_PROFILE`. Endpoint, keys, and region resolve from `~/.aws` via the named profile. |
 | `SRC_ANON` | _unset_ | _unset_ | Set to `1` for unsigned S3 source reads (public fixture bucket). |
 | `S3_VERIFY_SSL` | _unset_ (verify) | _unset_ (verify) | Set to `0` to skip TLS certificate verification for all S3 reads and writes, like `aws s3 --no-verify-ssl` (e.g. for an endpoint signed by an internal CA). |
 | `ANALYSIS_INTERVAL_HOURS` | `3` (`6` for `ifs`) | *as built-in default* | Hours between analysis times; `latest` and `--watch` floor to a multiple of this. Must divide 24 (e.g. `1` for hourly analyses). |
 | `ANALYSIS_LAG_HOURS` | `2` (`7` for `ifs`) | *as built-in default* | Hours allowed for source data delivery; `latest` means now minus this, floored to the analysis interval. |
+| `CLIP_LAT_MIN` / `CLIP_LAT_MAX` / `CLIP_LON_MIN` / `CLIP_LON_MAX` | _unset_ (no clipping) | _unset_ | `ifs` only: clip the output to this lat/lon box (degrees, inclusive, longitudes in −180..180), keeping one grid point beyond each bound. Each bound is optional. |
 
 For the dev container (`docker-compose.dev.yml`), `SRC_GRIB_TEMP_PATH` is
 unset.

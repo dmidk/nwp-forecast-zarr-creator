@@ -7,6 +7,7 @@ explicit flag > env > built-in default (see ``zarr_creator.settings``).
 import argparse
 
 from ..settings import (
+    CLIP_BOUND_NAMES,
     DEFAULT_DST_ZARR_OUTPUT_PATH,
     DEFAULT_MAX_HOUR,
     DEFAULT_MEMBER_ID,
@@ -74,7 +75,7 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=None,
         help="Last forecast hour to include, so hours 0..MAX_HOUR are expected "
-        f"(env: MAX_HOUR, default: {DEFAULT_MAX_HOUR}, or 72 for ifs)",
+        f"(env: MAX_HOUR, default: {DEFAULT_MAX_HOUR})",
     )
     parser.add_argument(
         "--suite-name",
@@ -116,6 +117,20 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
         help="Read the source from S3 unsigned, for public buckets "
         "(env: SRC_ANON=1). Never used for writes",
     )
+    for name, description in (
+        ("lat_min", "Clip the output to latitudes >= this (degrees north)"),
+        ("lat_max", "Clip the output to latitudes <= this (degrees north)"),
+        ("lon_min", "Clip the output to longitudes >= this (degrees east, -180..180)"),
+        ("lon_max", "Clip the output to longitudes <= this (degrees east, -180..180)"),
+    ):
+        parser.add_argument(
+            f"--clip-{name.replace('_', '-')}",
+            type=float,
+            default=None,
+            help=f"{description}, keeping one extra grid point beyond it. Only for "
+            f"suites on a lat/lon grid (ifs) "
+            f"(env: CLIP_{name.upper()}, default: no clipping)",
+        )
 
 
 def settings_from_args(
@@ -146,4 +161,10 @@ def settings_from_args(
         settings.dst_aws_profile = args.dest_profile
     if args.src_anon:
         settings.src_anon = True
+    for name in CLIP_BOUND_NAMES:
+        value = getattr(args, f"clip_{name}", None)
+        if value is not None:
+            setattr(settings, f"clip_{name}", value)
+    # fail on bad clip bounds now rather than after indexing
+    settings.clip_bounds()
     return settings

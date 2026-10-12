@@ -85,6 +85,8 @@ class Suite:
     level_dim_names: dict[str, str]
     rechunk_to: Callable[[xr.Dataset], dict]
     transform_part: Callable[[xr.Dataset, datetime.datetime], xr.Dataset]
+    # None: the suite can't be clipped to a lat/lon box (e.g. projected grids)
+    clip_to_bounds: Callable[[xr.Dataset, dict[str, float]], xr.Dataset] | None
 
 
 def _from_module(name: str, module: ModuleType) -> Suite:
@@ -105,6 +107,7 @@ def _from_module(name: str, module: ModuleType) -> Suite:
         level_dim_names=getattr(module, "LEVEL_DIM_NAMES", HARMONIE_LEVEL_DIM_NAMES),
         rechunk_to=getattr(module, "rechunk_to", _harmonie_rechunk_to),
         transform_part=getattr(module, "transform_part", _no_transform),
+        clip_to_bounds=getattr(module, "clip_to_bounds", None),
     )
 
 

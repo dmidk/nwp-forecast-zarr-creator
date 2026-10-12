@@ -63,6 +63,7 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
         )
 
     suite = get_suite(settings.suite_name)
+    clip_bounds = settings.clip_bounds()
 
     parts = {}
     for part_id, part_details in suite.data_collection.items():
@@ -134,7 +135,10 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
             if all(coord not in ds_part[v].coords for v in list(ds_part.data_vars)):
                 ds_part = ds_part.drop_vars(coord)
 
-        parts[part_id] = suite.transform_part(ds_part, t_analysis)
+        ds_part = suite.transform_part(ds_part, t_analysis)
+        if clip_bounds:
+            ds_part = suite.clip_to_bounds(ds_part, clip_bounds)
+        parts[part_id] = ds_part
 
     for part_id, ds_part in parts.items():
         rechunk_to = suite.rechunk_to(ds_part)

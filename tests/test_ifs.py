@@ -1,4 +1,4 @@
-"""Tests for the IFS suite (ANNA boundary input), using synthetic GRIB files."""
+"""Tests for the IFS suite (ANNA boundary source), using synthetic GRIB files."""
 
 import datetime
 from pathlib import Path
@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
+from tests.ifs_grib_fixture import LAT_FIRST, LAT_LAST, LON_FIRST, LON_LAST, NI, NJ
 from tests.ifs_grib_fixture import PRESSURE_LEVELS as FIXTURE_LEVELS
 from tests.ifs_grib_fixture import pressure_value, surface_value, write_ifs_file
 from zarr_creator import config_ifs
@@ -66,7 +67,11 @@ def test_suite_defaults_apply_unless_set(monkeypatch):
     monkeypatch.delenv("MEMBER_ID", raising=False)
     monkeypatch.setenv("SUITE_NAME", "ifs")
     cfg = s.load_settings()
-    assert (cfg.suite_name, cfg.max_hour, cfg.member_id) == ("ifs", 72, "control")
+    assert (cfg.suite_name, cfg.max_hour, cfg.member_id) == (
+        "ifs",
+        s.DEFAULT_MAX_HOUR,
+        "control",
+    )
     # switching suite switches the defaults back
     s.set_suite(cfg, "dini")
     assert (cfg.max_hour, cfg.member_id) == (s.DEFAULT_MAX_HOUR, s.DEFAULT_MEMBER_ID)
@@ -112,26 +117,36 @@ def ifs_zarr(tmp_path_factory):
         suite_name="ifs",
     )
     refs_dir = index_refs.build_indexes_and_refs(T_ANALYSIS, settings)
-    out = tmp_path / "out"
-    cli(
-        [
-            "convert",
-            "--t-analysis",
-            T_ANALYSIS.isoformat(),
-            "--suite-name",
-            "ifs",
-            "--refs-root-path",
-            settings.refs_root_path,
-            "--member-id",
-            "control",
-            "--dst-zarr-output-path",
-            f"{out}/{{suite_name}}/{{t_analysis}}/{{dataset_id}}.zarr",
-        ]
-    )
+
+    def convert(out, *extra_args):
+        cli(
+            [
+                "convert",
+                "--t-analysis",
+                T_ANALYSIS.isoformat(),
+                "--suite-name",
+                "ifs",
+                "--refs-root-path",
+                settings.refs_root_path,
+                "--member-id",
+                "control",
+                "--dst-zarr-output-path",
+                f"{out}/{{suite_name}}/{{t_analysis}}/{{dataset_id}}.zarr",
+                *extra_args,
+            ]
+        )
+        return xr.open_zarr(out / "ifs" / "2026-09-28T000000Z" / "ifs.zarr")
+
     return dict(
         src=src,
         refs_dir=refs_dir,
-        ds=xr.open_zarr(out / "ifs" / "2026-09-28T000000Z" / "ifs.zarr"),
+        ds=convert(tmp_path / "out"),
+        # the ANNA boundary box
+        ds_clipped=convert(
+            tmp_path / "out_clipped",
+            *("--clip-lat-min", "40", "--clip-lat-max", "72"),
+            *("--clip-lon-min", "-27", "--clip-lon-max", "39.5"),
+        ),
     )
 
 
@@ -176,10 +191,56 @@ def test_contract_coords(ifs_zarr):
         ds.prediction_timedelta.values,
         np.array([0, 3], dtype="timedelta64[h]").astype("timedelta64[ns]"),
     )
-    assert ds.level.values.tolist() == config_ifs.PRESSURE_LEVELS
+    # all delivered levels, as delivered (no 600 hPa)
+    assert ds.level.values.tolist() == list(FIXTURE_LEVELS)
     assert ds.level.attrs["units"] == "hPa"
-    np.testing.assert_allclose(ds.latitude, np.arange(40.25, 71.76, 0.25))
-    np.testing.assert_allclose(ds.longitude, np.arange(-19.5, 32.01, 0.25))
+    # the native grid, in its native order (north to south)
+    np.testing.assert_allclose(ds.latitude, np.linspace(LAT_FIRST, LAT_LAST, NJ))
+    np.testing.assert_allclose(ds.longitude, np.linspace(LON_FIRST, LON_LAST, NI))
+    assert not any(name.startswith("clip_") for name in ds.attrs)
+
+
+def test_clip_keeps_one_point_beyond_each_bound(ifs_zarr):
+    ds = ifs_zarr["ds_clipped"]
+    # 0.5 deg fixture grid: one point beyond lat 40..72 and lon -27..39.5
+    np.testing.assert_allclose(ds.latitude, np.arange(72.5, 39.49, -0.5))
+    np.testing.assert_allclose(ds.longitude, np.arange(-27.5, 40.01, 0.5))
+    assert {k: v for k, v in ds.attrs.items() if k.startswith("clip_")} == {
+        "clip_lat_min": 40.0,
+        "clip_lat_max": 72.0,
+        "clip_lon_min": -27.0,
+        "clip_lon_max": 39.5,
+    }
+    # values are untouched, the statics are clipped too
+    _assert_field(
+        _step(ds, 3).mean_sea_level_pressure,
+        surface_value("msl", ds.latitude, ds.longitude, 3),
+    )
+    assert ds.land_sea_mask.shape == (ds.latitude.size, ds.longitude.size)
+
+
+def _grid_ds(lats, lons):
+    return xr.Dataset(
+        {"a": (("latitude", "longitude"), np.zeros((len(lats), len(lons))))},
+        coords=dict(latitude=lats, longitude=lons),
+    )
+
+
+def test_clip_partial_bounds():
+    ds = _grid_ds([3.0, 2.0, 1.0, 0.0], [0.0, 1.0, 2.0, 3.0])
+    clipped = config_ifs.clip_to_bounds(ds, {"lat_min": 2.0})
+    # unbounded sides keep the whole grid; one point beyond the bound
+    assert clipped.latitude.values.tolist() == [3.0, 2.0, 1.0]
+    assert clipped.longitude.values.tolist() == [0.0, 1.0, 2.0, 3.0]
+    # a bound beyond the grid edge has no point to add
+    clipped = config_ifs.clip_to_bounds(ds, {"lon_max": 3.0, "lon_min": -5.0})
+    assert clipped.longitude.values.tolist() == [0.0, 1.0, 2.0, 3.0]
+
+
+def test_clip_rejects_box_outside_grid():
+    ds = _grid_ds([3.0, 2.0], [0.0, 1.0])
+    with pytest.raises(ValueError, match="contain no latitude"):
+        config_ifs.clip_to_bounds(ds, {"lat_min": 10.0})
 
 
 def _step(ds, step):
@@ -192,7 +253,7 @@ def _assert_field(da, expected):
     )
 
 
-def test_values_regridded_linearly(ifs_zarr):
+def test_values_on_native_grid(ifs_zarr):
     ds = ifs_zarr["ds"]
     lat, lon = ds.latitude, ds.longitude
 
@@ -202,8 +263,6 @@ def test_values_regridded_linearly(ifs_zarr):
     _assert_field(w, pressure_value("w", 850, lat, lon, 0))
     # statics come from the first step
     _assert_field(ds.geopotential_at_surface, surface_value("z", lat, lon, 0))
-    # delivered levels not needed by ANNA are dropped
-    assert 500 in FIXTURE_LEVELS and 500 not in ds.level
 
 
 def test_geopotential_from_geopotential_height(ifs_zarr):
@@ -215,27 +274,10 @@ def test_geopotential_from_geopotential_height(ifs_zarr):
     assert z.attrs["units"] == "m**2 s**-2"
 
 
-def test_600hpa_interpolated_in_log_pressure(ifs_zarr):
-    ds = ifs_zarr["ds"]
-    assert 600 not in FIXTURE_LEVELS
-    weight = np.log(600 / 500) / np.log(700 / 500)
-    t = _step(ds, 0).temperature.sel(level=600)
-    t500, t700 = (
-        pressure_value("t", level, ds.latitude, ds.longitude, 0) for level in (500, 700)
-    )
-    _assert_field(t, (1 - weight) * t500 + weight * t700)
-
-
 def test_specific_humidity_from_relative_humidity(ifs_zarr):
     ds = ifs_zarr["ds"]
-    # q is nonlinear in r and t, so compare where the 0.25 deg grid coincides
-    # with the 0.5 deg source grid (no horizontal interpolation)
-    on_source = dict(
-        latitude=ds.latitude[(ds.latitude * 2) % 1 == 0],
-        longitude=ds.longitude[(ds.longitude * 2) % 1 == 0],
-    )
-    lat, lon = on_source["latitude"], on_source["longitude"]
-    q = _step(ds, 3).specific_humidity.sel(level=850, **on_source)
+    lat, lon = ds.latitude, ds.longitude
+    q = _step(ds, 3).specific_humidity.sel(level=850)
     expected = config_ifs.specific_humidity_from_relative_humidity(
         pressure_value("r", 850, lat, lon, 3),
         pressure_value("t", 850, lat, lon, 3),
@@ -264,19 +306,12 @@ def test_specific_humidity_saturated_at_1000hpa():
     np.testing.assert_allclose(q, 0.0147, rtol=0.02)
 
 
-def test_regrid_rejects_uncovered_box():
-    ds = xr.Dataset(
-        {"a": (("latitude", "longitude"), np.zeros((3, 3)))},
-        coords=dict(latitude=[50.0, 51.0, 52.0], longitude=[0.0, 1.0, 2.0]),
-    )
-    with pytest.raises(ValueError, match="doesn't cover"):
-        config_ifs.regrid_to_boundary_box(ds)
-
-
 def test_ifs_suite_registered():
     suite = get_suite("ifs")
     assert suite.analysis_interval_hours == 6
     assert suite.index_next_to_source is False
+    assert suite.clip_to_bounds is config_ifs.clip_to_bounds
     assert get_suite("dini").index_next_to_source is True
+    assert get_suite("dini").clip_to_bounds is None
     with pytest.raises(ValueError, match="Unsupported suite"):
         get_suite("nope")

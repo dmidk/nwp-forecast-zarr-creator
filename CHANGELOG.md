@@ -11,14 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ifs` suite: converts ECMWF IFS control forecasts from DMI's ECMWF cache
   (`dei_dj_ifs-ens-cf_od_oper_fc_*`, GRIB1/2 0.1° lat/lon) into one `ifs.zarr`
-  per cycle in the layout of the ANNA boundary datastore. It uses ERA5 names,
-  dims `time`/`prediction_timedelta`/`level`/`latitude`/`longitude`, and is
-  regridded to 0.25°. The feed has no specific humidity and no 600 hPa, so
-  `q` is derived from `r` and `t`, and 600 hPa is interpolated in ln(p)
-  between 500 and 700 hPa. Each suite now has its own file names, gribscan
-  magician, cycle interval, delivery lag and `MAX_HOUR`/`MEMBER_ID` defaults
+  per cycle, a source for ANNA's boundary input. It uses ERA5 names and dims
+  `time`/`prediction_timedelta`/`level`/`latitude`/`longitude`, and keeps
+  the native 0.1° grid and the delivered pressure levels (regridding to
+  ANNA's box is left to ANNA). The feed has no geopotential or specific
+  humidity, so `z` is derived from `gh` and `q` from `r` and `t`. The output
+  can be clipped to a lat/lon box with `--clip-lat-min/--clip-lat-max/`
+  `--clip-lon-min/--clip-lon-max` (env `CLIP_*`), keeping one grid point
+  beyond each bound. Each suite now has its own file names,
+  gribscan magician, cycle interval, delivery lag and `MEMBER_ID` default
   (`zarr_creator/suites.py`); `ANALYSIS_LAG_HOURS` /
-  `ANALYSIS_INTERVAL_HOURS` override the suite's lag and interval.
+  `ANALYSIS_INTERVAL_HOURS` override the suite's lag and interval. The README
+  explains how the IFS output lines up with DINI in ANNA, compared with how
+  ANNA was trained, and which `MAX_HOUR` ANNA needs.
 
 ### Changed
 

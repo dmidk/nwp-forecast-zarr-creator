@@ -31,6 +31,9 @@ DEFAULT_DST_ZARR_OUTPUT_PATH = "file:///tmp/{suite_name}-recent/{dataset_id}.zar
 
 FILE_TYPES = ("sf", "pl")
 
+# Settings.clip_<name> / env CLIP_<NAME> / --clip-<name>
+CLIP_BOUND_NAMES = ("lat_min", "lat_max", "lon_min", "lon_max")
+
 
 def _getenv(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
@@ -55,6 +58,12 @@ class Settings:
     dst_aws_profile: str | None = None
     # Unsigned S3 reads (public CI fixture bucket). Never used for writes.
     src_anon: bool = False
+    # Optional lat/lon box (degrees, inclusive) to clip the output to; unset
+    # sides are unbounded. Only suites on a lat/lon grid support it.
+    clip_lat_min: float | None = None
+    clip_lat_max: float | None = None
+    clip_lon_min: float | None = None
+    clip_lon_max: float | None = None
     # Whether max_hour/member_id are the suite's defaults (not set via env or
     # flag), so that switching suite also switches them.
     _max_hour_is_default: bool = field(default=False, repr=False)
@@ -69,6 +78,46 @@ class Settings:
                 f"SUITE_NAME must be one of {', '.join(SUITE_NAMES)}, "
                 f"got: {self.suite_name!r}"
             )
+
+    def clip_bounds(self) -> dict[str, float]:
+        """The clip bounds that are set, validated against each other and the suite.
+
+        Called before indexing (CLI and runner), so that bad bounds fail
+        before the conversion retry loop would retry them forever.
+        """
+        bounds = {
+            name: value
+            for name in CLIP_BOUND_NAMES
+            if (value := getattr(self, f"clip_{name}")) is not None
+        }
+        if not bounds:
+            return bounds
+        for axis, limit in (("lat", 90.0), ("lon", 180.0)):
+            for side in ("min", "max"):
+                value = bounds.get(f"{axis}_{side}")
+                if value is not None and not -limit <= value <= limit:
+                    raise ValueError(
+                        f"CLIP_{axis.upper()}_{side.upper()} must be within "
+                        f"-{limit:g}..{limit:g}, got: {value}"
+                    )
+            vmin, vmax = bounds.get(f"{axis}_min"), bounds.get(f"{axis}_max")
+            if vmin is not None and vmax is not None and vmin > vmax:
+                raise ValueError(
+                    f"CLIP_{axis.upper()}_MIN ({vmin}) must not be larger than "
+                    f"CLIP_{axis.upper()}_MAX ({vmax})"
+                )
+
+        from .suites import get_suite
+
+        if get_suite(self.suite_name).clip_to_bounds is None:
+            supported = [
+                n for n in SUITE_NAMES if get_suite(n).clip_to_bounds is not None
+            ]
+            raise ValueError(
+                f"Clipping (CLIP_* / --clip-*) is only supported for the "
+                f"{', '.join(supported)} suite(s), not {self.suite_name!r}"
+            )
+        return bounds
 
 
 def set_suite(settings: Settings, suite_name: str) -> Settings:
@@ -111,6 +160,19 @@ def load_settings() -> Settings:
     if max_hour < 0:
         raise ValueError(f"MAX_HOUR must be >= 0, got: {max_hour}")
 
+    clip = {}
+    for name in CLIP_BOUND_NAMES:
+        env_name = f"CLIP_{name.upper()}"
+        raw = _getenv(env_name)
+        if raw is None:
+            continue
+        try:
+            clip[f"clip_{name}"] = float(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"{env_name} must be a number (degrees), got: {raw!r}"
+            ) from exc
+
     settings = Settings(
         src_grib_root_uri=src_root,
         refs_root_path=_getenv("REFS_ROOT_PATH", DEFAULT_REFS_ROOT_PATH),  # type: ignore[arg-type]
@@ -128,6 +190,7 @@ def load_settings() -> Settings:
         or os.environ.get("AWS_PROFILE")
         or None,
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
+        **clip,
         _max_hour_is_default=_getenv("MAX_HOUR") is None,
         _member_id_is_default=_getenv("MEMBER_ID") is None,
     )

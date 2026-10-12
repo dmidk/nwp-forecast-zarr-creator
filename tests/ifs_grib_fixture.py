@@ -21,7 +21,7 @@ import eccodes
 import numpy as np
 
 LAT_FIRST, LAT_LAST = 75.0, 35.0
-LON_FIRST, LON_LAST = -25.0, 40.0
+LON_FIRST, LON_LAST = -30.0, 42.0
 INC = 0.5
 NI = int(round((LON_LAST - LON_FIRST) / INC)) + 1
 NJ = int(round((LAT_FIRST - LAT_LAST) / INC)) + 1

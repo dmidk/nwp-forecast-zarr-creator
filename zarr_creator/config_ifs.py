@@ -9,12 +9,12 @@ e.g. ``dei_dj_ifs-ens-cf_od_oper_fc_20260928T000000Z_20260928T030000Z_3h``.
 The fields are on a regular 0.1 deg lat/lon grid (2101x901, 90N..0N,
 120W..90E), mostly GRIB1 with a few GRIB2 messages mixed in.
 
-The output is a single ``ifs.zarr`` per cycle laid out as the ANNA boundary
-input expects (see the contract in the header of
-``mlwm-deployment/configurations/ANNA/configs/ifs_7deg_model1_config.yaml``):
-ERA5/WeatherBench2 variable names, dims ``time`` (analysis time, length 1),
-``prediction_timedelta``, ``level`` (hPa), ``latitude`` and ``longitude``,
-regridded to 0.25 deg over the ANNA boundary box.
+The output is a single ``ifs.zarr`` per cycle on the native grid and the
+delivered pressure levels, optionally clipped to a lat/lon box (see
+`clip_to_bounds`). It uses ERA5/WeatherBench2 variable names and dims ``time``
+(analysis time, length 1), ``prediction_timedelta``, ``level`` (hPa),
+``latitude`` and ``longitude``, as the ANNA boundary input does; regridding
+to ANNA's 0.25 deg box and adding its 600 hPa level are left to ANNA.
 """
 
 import datetime
@@ -27,21 +27,12 @@ FILENAME_PREFIX = "dei_dj_ifs-ens-cf_od_oper_fc"
 STEP_HOURS = 3
 
 ANALYSIS_INTERVAL_HOURS = 6
-# Delivery lag before a cycle's first 0..DEFAULT_MAX_HOUR files are expected
-# to be complete. To be tuned against actual arrival times on Scale.
+# Delivery lag before a cycle's 0..MAX_HOUR files are expected to be
+# complete. To be tuned against actual arrival times on Scale.
 LAG_HOURS = 7
-DEFAULT_MAX_HOUR = 72
 DEFAULT_MEMBER_ID = "control"
 # the source is the shared ECMWF cache, keep the index files with the refs
 INDEX_NEXT_TO_SOURCE = False
-
-# ANNA boundary box: DANRA extent (47.65..64.42N, -12.14..24.58E) plus the
-# 7.19 deg domain-cropping margin, rounded outward to the 0.25 deg grid
-LAT_MIN, LAT_MAX = 40.25, 71.75
-LON_MIN, LON_MAX = -19.5, 32.0
-GRID_RESOLUTION = 0.25
-
-PRESSURE_LEVELS = [100, 200, 400, 600, 700, 850, 925, 1000]
 
 PROJECTION_IDENTIFIER = "latitude_longitude"
 # IFS GRIB1 fields are defined on a sphere with radius 6367470 m
@@ -116,9 +107,9 @@ def _static(short_name):
 
 # Pressure levels in the `dei_dj` files (GRIB1, checked on the 3h file of the
 # 2026-09-28T00Z cycle): 50, 70, 100, 150, 200, 250, 300, 400, 500, 700, 850,
-# 925, 950 and 1000 hPa, with gh, t, r, u, v and w. There is no 600 hPa and no
-# specific humidity, so those are derived (see `_on_target_levels` and
-# `specific_humidity_from_relative_humidity`).
+# 925, 950 and 1000 hPa, with gh, t, r, u, v and w. All of them are written
+# as delivered. There is no geopotential and no specific humidity, so those
+# are derived (see `_geopotential` and `specific_humidity_from_relative_humidity`).
 
 G0 = 9.80665  # m s-2, used by ECMWF to define geopotential height
 EPSILON = 0.621981  # R_d / R_v as in the IFS
@@ -156,36 +147,12 @@ def specific_humidity_from_relative_humidity(r, t, p):
     return EPSILON * e / (p - (1 - EPSILON) * e)
 
 
-def _on_target_levels(da: xr.DataArray) -> xr.DataArray:
-    """Select `PRESSURE_LEVELS`, interpolating missing ones linearly in ln(p).
-
-    Only 600 hPa is missing from the source, and it's interpolated between
-    500 and 700 hPa.
-    """
-    available = da.level.values
-    levels = []
-    for level in PRESSURE_LEVELS:
-        if level in available:
-            levels.append(da.sel(level=level))
-            continue
-        below = available[available < level].max()
-        above = available[available > level].min()
-        weight = np.log(level / below) / np.log(above / below)
-        interpolated = (1 - weight) * da.sel(level=below, drop=True) + weight * da.sel(
-            level=above, drop=True
-        )
-        levels.append(interpolated.assign_coords(level=level))
-    da_levels = xr.concat(levels, dim="level")
-    da_levels.attrs = da.attrs
-    return da_levels
-
-
 def _pressure(short_name):
-    return lambda ds: _on_target_levels(ds[short_name])
+    return lambda ds: ds[short_name]
 
 
 def _geopotential(ds: xr.Dataset) -> xr.DataArray:
-    da = _on_target_levels(ds["gh"] * G0)
+    da = ds["gh"] * G0
     da.attrs = dict(
         units="m**2 s**-2",
         long_name="Geopotential",
@@ -197,8 +164,7 @@ def _geopotential(ds: xr.Dataset) -> xr.DataArray:
 
 def _specific_humidity(ds: xr.Dataset) -> xr.DataArray:
     p = ds.level * 100.0  # hPa -> Pa
-    q = specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
-    da = _on_target_levels(q)
+    da = specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
     da.attrs = dict(
         units="kg kg**-1",
         long_name="Specific humidity",
@@ -252,47 +218,53 @@ LEVEL_DIM_NAMES = {"isobaricInhPa": "level"}
 
 
 def rechunk_to(ds: xr.Dataset) -> dict:
-    # one full (small, 0.25 deg) field per chunk
+    # one full field per chunk (at most 2101x901 at 0.1 deg, ~7.5 MB)
     return dict(time=1, prediction_timedelta=1, level=1)
 
 
-def _target_axis(vmin: float, vmax: float) -> np.ndarray:
-    n = int(round((vmax - vmin) / GRID_RESOLUTION)) + 1
-    return vmin + GRID_RESOLUTION * np.arange(n)
+# tolerance for grid points that are meant to lie exactly on a clip bound
+_CLIP_TOLERANCE = 1e-6
 
 
-def regrid_to_boundary_box(ds: xr.Dataset) -> xr.Dataset:
-    """Linearly interpolate onto the 0.25 deg grid covering the boundary box."""
-    target_lat = _target_axis(LAT_MIN, LAT_MAX)
-    target_lon = _target_axis(LON_MIN, LON_MAX)
-    src_step = float(abs(ds.latitude.diff("latitude")).max())
+def clip_to_bounds(ds: xr.Dataset, bounds: dict[str, float]) -> xr.Dataset:
+    """Clip to a lat/lon box, keeping one extra grid point beyond each bound.
 
-    ds = ds.sortby("latitude").sortby("longitude")
-    ds = ds.sel(
-        latitude=slice(LAT_MIN - src_step, LAT_MAX + src_step),
-        longitude=slice(LON_MIN - src_step, LON_MAX + src_step),
-    )
-    for dim, target in (("latitude", target_lat), ("longitude", target_lon)):
-        if ds[dim].min() > target.min() or ds[dim].max() < target.max():
+    ``bounds`` has any of ``lat_min``, ``lat_max``, ``lon_min`` and ``lon_max``
+    (degrees, inclusive, longitudes in -180..180); unset sides are unbounded.
+    The extra point lets a later linear regrid onto points exactly on the box
+    edge interpolate rather than extrapolate. The native grid and its order
+    (latitudes run north to south) are kept.
+    """
+    indexers = {}
+    for axis, dim in (("lat", "latitude"), ("lon", "longitude")):
+        values = ds[dim].values
+        inside = np.ones(values.shape, dtype=bool)
+        if (vmin := bounds.get(f"{axis}_min")) is not None:
+            inside &= values >= vmin - _CLIP_TOLERANCE
+        if (vmax := bounds.get(f"{axis}_max")) is not None:
+            inside &= values <= vmax + _CLIP_TOLERANCE
+        (idx,) = np.nonzero(inside)
+        if idx.size == 0:
             raise ValueError(
-                f"IFS source grid ({float(ds[dim].min())}..{float(ds[dim].max())}) "
-                f"doesn't cover the target {dim} range "
-                f"({target.min()}..{target.max()})"
+                f"Clip bounds {bounds} contain no {dim} of the IFS grid "
+                f"({values.min()}..{values.max()})"
             )
-    ds_regridded = ds.interp(latitude=target_lat, longitude=target_lon)
-    for dim in ("latitude", "longitude"):
-        ds_regridded[dim].attrs = ds[dim].attrs
-    return ds_regridded
+        # an unbounded side already reaches the end of the grid, so this only
+        # adds a point beyond the sides that have a bound
+        start, stop = max(idx.min() - 1, 0), min(idx.max() + 2, values.size)
+        indexers[dim] = slice(start, stop)
+    ds = ds.isel(indexers)
+    for name, value in bounds.items():
+        ds.attrs[f"clip_{name}"] = value
+    return ds
 
 
 def transform_part(ds: xr.Dataset, t_analysis: datetime.datetime) -> xr.Dataset:
-    """Bring a converted IFS part into the layout of the ANNA boundary contract."""
+    """Bring a converted IFS part into the ERA5/WeatherBench2 layout."""
     ds = ds.rename(lat="latitude", lon="longitude")
     for var_name in ds.data_vars:
         # set by the gribscan IFS magician, refers to the old names
         ds[var_name].attrs.pop("coordinates", None)
-
-    ds = regrid_to_boundary_box(ds)
 
     t0 = np.datetime64(
         t_analysis.astimezone(datetime.timezone.utc).replace(tzinfo=None), "ns"
