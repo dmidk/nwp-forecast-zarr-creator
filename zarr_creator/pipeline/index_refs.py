@@ -24,7 +24,7 @@ from loguru import logger
 
 from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
-from ..settings import Settings, describe_source_auth, refs_dir_for, require_utc
+from ..settings import Settings, describe_source_auth, get_refs_dir, require_utc
 from ..suites import get_suite
 
 
@@ -88,7 +88,7 @@ def _download_with_hint(urls, settings, profile, anon) -> str:
             urls, settings.src_grib_temp_path, profile, anon
         )
     except Exception as exc:
-        hint = storage.auth_error_hint(exc, anon=anon)
+        hint = storage.get_auth_error_hint(exc, anon=anon)
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
@@ -117,7 +117,7 @@ def build_indexes_and_refs(
             settings.src_grib_root_uri, filenames, profile, anon
         )
     except Exception as exc:
-        hint = storage.auth_error_hint(exc, anon=anon)
+        hint = storage.get_auth_error_hint(exc, anon=anon)
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
@@ -145,7 +145,7 @@ def build_indexes_and_refs(
         _, src_dir = split_protocol(settings.src_grib_root_uri)
         logger.info(f"No staging path set, indexing directly from {src_dir}")
 
-    refs_dir = refs_dir_for(t_analysis, settings)
+    refs_dir = get_refs_dir(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
 
     set_local_eccodes_definitions_path()

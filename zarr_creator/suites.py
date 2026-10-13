@@ -37,7 +37,7 @@ from .settings import DEFAULT_ANALYSIS_INTERVAL_HOURS as HARMONIE_INTERVAL_HOURS
 from .settings import DEFAULT_ANALYSIS_LAG_HOURS as HARMONIE_LAG_HOURS
 from .settings import DEFAULT_MAX_HOUR as HARMONIE_MAX_HOUR
 from .settings import DEFAULT_MEMBER_ID as HARMONIE_MEMBER_ID
-from .settings import SUITE_NAMES, expected_grib_filenames
+from .settings import SUITE_NAMES, get_expected_grib_filenames
 
 HARMONIE_LEVEL_DIM_NAMES = {
     "isobaricInhPa": "pressure",
@@ -67,7 +67,7 @@ def _get_harmonie_grib_file_groups(
         ``"pl"``) to the file names relative to the source root.
     """
     groups: dict[str, list[str]] = {}
-    for name in expected_grib_filenames(t_analysis, max_hour, member_id):
+    for name in get_expected_grib_filenames(t_analysis, max_hour, member_id):
         groups.setdefault(name.rsplit("_", 1)[-1], []).append(name)
     return groups
 

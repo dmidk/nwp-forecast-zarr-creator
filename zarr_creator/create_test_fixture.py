@@ -44,8 +44,8 @@ from .settings import (
     FILE_TYPES,
     compute_analysis_time,
     describe_source_auth,
-    expected_grib_filenames,
-    refs_dir_name,
+    get_expected_grib_filenames,
+    make_refs_dir_name,
     require_utc,
 )
 
@@ -64,7 +64,7 @@ def _parse_t_analysis(value: str | None) -> datetime.datetime | None:
     return require_utc(isodate.parse_datetime(value))
 
 
-def candidate_times(
+def get_candidate_times(
     now: datetime.datetime,
     attempts: int = MAX_AUTO_ATTEMPTS,
 ) -> list[datetime.datetime]:
@@ -87,7 +87,7 @@ def is_complete(
     anon: bool = False,
 ) -> bool:
     """Check that all expected GRIB files exist for one analysis time."""
-    names = expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
+    names = get_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
     return not storage.find_missing(source_uri, names, profile, anon)
 
 
@@ -112,7 +112,7 @@ def resolve_analysis_time(
             )
         return explicit
     now = now or datetime.datetime.now(datetime.timezone.utc)
-    for candidate in candidate_times(now):
+    for candidate in get_candidate_times(now):
         logger.info(f"Trying {candidate.isoformat()}")
         if is_complete(
             candidate, source_uri, max_hour, member_id, file_types, profile, anon
@@ -124,7 +124,7 @@ def resolve_analysis_time(
     )
 
 
-def _sha256(path: str) -> str:
+def _calc_sha256(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(65536), b""):
@@ -132,7 +132,7 @@ def _sha256(path: str) -> str:
     return h.hexdigest()
 
 
-def _git_sha() -> str:
+def _get_git_sha() -> str:
     try:
         return subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -144,7 +144,7 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def _eccodes_version() -> str:
+def _get_eccodes_version() -> str:
     try:
         import importlib.metadata
 
@@ -153,12 +153,12 @@ def _eccodes_version() -> str:
         return "unknown"
 
 
-def dest_prefix(
+def make_dest_prefix(
     fixture_bucket: str, suite_name: str, t_analysis: datetime.datetime
 ) -> str:
     """Destination prefix URI: ``<bucket>/<suite>/<YYYY-MM-DDTHHMMZ>``."""
     root = fixture_bucket if "://" in fixture_bucket else f"s3://{fixture_bucket}"
-    return f"{root.rstrip('/')}/{suite_name}/{refs_dir_name(t_analysis)}"
+    return f"{root.rstrip('/')}/{suite_name}/{make_refs_dir_name(t_analysis)}"
 
 
 def build_manifest(
@@ -180,7 +180,7 @@ def build_manifest(
             {
                 "name": os.path.basename(path),
                 "size": os.path.getsize(path),
-                "sha256": _sha256(path),
+                "sha256": _calc_sha256(path),
             }
         )
     return {
@@ -195,8 +195,8 @@ def build_manifest(
         "file_types": list(file_types),
         "files": files,
         "created_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "git_sha": _git_sha(),
-        "eccodes_version": _eccodes_version(),
+        "git_sha": _get_git_sha(),
+        "eccodes_version": _get_eccodes_version(),
         "retention_note": (
             "Source is the operational bucket, which retains ~2 weeks. "
             "This fixture is a frozen copy; old analysis times cannot be re-pulled."
@@ -294,11 +294,11 @@ def create_test_fixture(
             src_anon,
         )
     except Exception as exc:
-        hint = storage.auth_error_hint(exc, anon=src_anon)
+        hint = storage.get_auth_error_hint(exc, anon=src_anon)
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
-    names = expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
+    names = get_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
     src_urls = [storage.join(source_uri, name) for name in names]
 
     if dest_dir is not None:
@@ -313,7 +313,7 @@ def create_test_fixture(
         )
         return dest_dir
 
-    prefix = dest_prefix(fixture_bucket, suite_name, t_analysis)
+    prefix = make_dest_prefix(fixture_bucket, suite_name, t_analysis)
     dest_ml = f"{prefix}/ml"
     logger.info(
         f"Snapshotting {suite_name} {t_analysis.isoformat()} "
@@ -338,7 +338,7 @@ def create_test_fixture(
                 src_urls, grib_dir, source_profile, src_anon
             )
         except Exception as exc:
-            hint = storage.auth_error_hint(exc, anon=src_anon)
+            hint = storage.get_auth_error_hint(exc, anon=src_anon)
             if hint is not None:
                 raise RuntimeError(hint) from exc
             raise

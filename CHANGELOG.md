@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after the suite is known.
 - Refs are assembled in-process via `gribscan.grib_magic` instead of the
   `gribscan-build` CLI, so suites can use their own magician.
+- Functions that build, look up or compute a value are renamed to verb
+  names, e.g. `grib_filename` → `make_grib_filename`, `refs_dir_for` →
+  `get_refs_dir`, `storage_options` → `get_storage_options`,
+  `settings_from_args` → `apply_args_to_settings` and `refs_done` →
+  `is_refs_done`. Command line and environment variables are unchanged.
 
 ## [v0.9.0]
 
