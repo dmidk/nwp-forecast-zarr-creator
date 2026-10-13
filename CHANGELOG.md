@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Functions that build, look up or compute a value are renamed to verb
+  names, e.g. `grib_filename` → `make_grib_filename`, `refs_dir_for` →
+  `get_refs_dir`, `storage_options` → `get_storage_options`,
+  `settings_from_args` → `apply_args_to_settings` and `refs_done` →
+  `is_refs_done`. Command line and environment variables are unchanged.
+
 ## [v0.9.0]
 
 This release replaces the bash scripts with a Python-only pipeline. Source GRIB files can be read from S3 (downloaded to a local staging directory, so no S3 mount is needed) or from a local path, and the zarr output can be written to any local or S3 path set with `DST_ZARR_OUTPUT_PATH`. It contains breaking changes to the command line and the container entrypoint, see below. [\#36](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/36), @leifdenby

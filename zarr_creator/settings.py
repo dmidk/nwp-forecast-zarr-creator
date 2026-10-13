@@ -211,12 +211,12 @@ def resolve_t_analysis(
     return require_utc(isodate.parse_datetime(value))
 
 
-def analysis_time_str(t_analysis: datetime.datetime) -> str:
+def format_analysis_time_for_grib(t_analysis: datetime.datetime) -> str:
     """Format as ``YYYYMMDDHH`` for GRIB filenames (``fc<str>+<HHH>...``)."""
     return require_utc(t_analysis).strftime("%Y%m%d%H")
 
 
-def refs_dir_name(t_analysis: datetime.datetime) -> str:
+def make_refs_dir_name(t_analysis: datetime.datetime) -> str:
     """Minute-precision refs directory name: ``YYYY-MM-DDTHHMMZ``."""
     return require_utc(t_analysis).strftime("%Y-%m-%dT%H%MZ")
 
@@ -226,14 +226,14 @@ def format_t_analysis(t_analysis: datetime.datetime) -> str:
     return require_utc(t_analysis).isoformat().replace(":", "").replace("+0000", "Z")
 
 
-def grib_filename(
+def make_grib_filename(
     t_analysis: datetime.datetime, hour: int, member_id: str, file_type: str
 ) -> str:
     """Build a GRIB filename relative to the source root URI."""
-    return f"fc{analysis_time_str(t_analysis)}+{hour:03d}{member_id}_{file_type}"
+    return f"fc{format_analysis_time_for_grib(t_analysis)}+{hour:03d}{member_id}_{file_type}"
 
 
-def expected_grib_filenames(
+def get_expected_grib_filenames(
     t_analysis: datetime.datetime,
     max_hour: int,
     member_id: str,
@@ -241,18 +241,18 @@ def expected_grib_filenames(
 ) -> list[str]:
     """All expected GRIB filenames for one analysis time."""
     return [
-        grib_filename(t_analysis, hour, member_id, file_type)
+        make_grib_filename(t_analysis, hour, member_id, file_type)
         for file_type in file_types
         for hour in range(max_hour + 1)
     ]
 
 
-def refs_dir_for(t_analysis: datetime.datetime, settings: Settings) -> str:
+def get_refs_dir(t_analysis: datetime.datetime, settings: Settings) -> str:
     """Full refs output directory for one analysis time."""
     return os.path.join(
         settings.refs_root_path,
         settings.member_id,
-        f"{refs_dir_name(t_analysis)}.jsons",
+        f"{make_refs_dir_name(t_analysis)}.jsons",
     )
 
 

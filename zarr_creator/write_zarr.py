@@ -72,7 +72,7 @@ def write_output_zarrs(
     fs, path = storage.resolve_fs(output_path, profile)
     target = zarr.storage.FsspecStore.from_url(
         fs.unstrip_protocol(path),
-        storage_options=storage.storage_options(output_path, profile),
+        storage_options=storage.get_storage_options(output_path, profile),
     )
     ds.to_zarr(
         target,
