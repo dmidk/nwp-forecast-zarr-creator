@@ -17,6 +17,19 @@ from zarr_creator.suites import get_suite
 
 
 def _utc(*args):
+    """
+    Build a timezone-aware UTC datetime.
+
+    Parameters
+    ----------
+    *args : int
+        Positional arguments for `datetime.datetime` (year, month, day, ...).
+
+    Returns
+    -------
+    datetime.datetime
+        The datetime with ``tzinfo`` set to UTC.
+    """
     return datetime.datetime(*args, tzinfo=datetime.timezone.utc)
 
 
@@ -24,6 +37,7 @@ T_ANALYSIS = _utc(2026, 9, 28, 0)
 
 
 def test_grib_filenames():
+    """Check the IFS GRIB filenames generated for a cycle's forecast steps."""
     groups = config_ifs.grib_file_groups(T_ANALYSIS, 6, "control")
     assert groups == {
         "dj": [
@@ -53,6 +67,7 @@ def test_grib_filenames():
     ],
 )
 def test_latest_analysis_time_per_suite(monkeypatch, suite_name, now, expected):
+    """Check "latest" resolves using each suite's own lag and cycle interval."""
     monkeypatch.delenv("ANALYSIS_LAG_HOURS", raising=False)
     monkeypatch.delenv("ANALYSIS_INTERVAL_HOURS", raising=False)
     t = s.resolve_t_analysis_for_suite(
@@ -62,6 +77,7 @@ def test_latest_analysis_time_per_suite(monkeypatch, suite_name, now, expected):
 
 
 def test_explicit_analysis_time_ignores_suite_lag():
+    """Check an explicit analysis time is used as given, without suite lag."""
     now = _utc(2026, 9, 28, 13, 30)
     assert s.resolve_t_analysis_for_suite(
         "2026-09-28T00:00:00Z", "ifs", now=now
@@ -69,6 +85,7 @@ def test_explicit_analysis_time_ignores_suite_lag():
 
 
 def test_compute_analysis_time_interval():
+    """Check the analysis time is floored to the cycle interval after the lag."""
     assert s.compute_analysis_time(
         _utc(2026, 9, 28, 12, 59), lag_hours=7, interval_hours=6
     ) == _utc(2026, 9, 28, 0)
@@ -78,6 +95,7 @@ def test_compute_analysis_time_interval():
 
 
 def test_suite_defaults_apply_unless_set(monkeypatch):
+    """Check suite defaults for max hour and member apply unless set in env."""
     monkeypatch.delenv("MAX_HOUR", raising=False)
     monkeypatch.delenv("MEMBER_ID", raising=False)
     monkeypatch.setenv("SUITE_NAME", "ifs")
@@ -97,6 +115,7 @@ def test_suite_defaults_apply_unless_set(monkeypatch):
 
 
 def test_watch_uses_suite_cycle(tmp_path, monkeypatch):
+    """Check the watch loop picks the latest cycle using the suite's lag."""
     cfg = s.Settings(
         refs_root_path=str(tmp_path), suite_name="ifs", member_id="control"
     )
@@ -109,6 +128,16 @@ def test_watch_uses_suite_cycle(tmp_path, monkeypatch):
 
 
 def _write_fixture(src_dir, steps=(0, 3)):
+    """
+    Write synthetic IFS GRIB files for ``T_ANALYSIS`` into a directory.
+
+    Parameters
+    ----------
+    src_dir : pathlib.Path
+        Directory to write the files to, using the real IFS filenames.
+    steps : tuple of int, optional
+        Forecast steps (hours) to write a file for.
+    """
     for step in steps:
         write_ifs_file(
             src_dir / config_ifs.grib_filename(T_ANALYSIS, step), T_ANALYSIS, step
@@ -117,7 +146,24 @@ def _write_fixture(src_dir, steps=(0, 3)):
 
 @pytest.fixture(scope="module")
 def ifs_zarr(tmp_path_factory):
-    """Index, build refs and convert the synthetic IFS files end to end."""
+    """
+    Index, build refs and convert the synthetic IFS files end to end.
+
+    The conversion is run twice: once on the full native grid and once
+    clipped to the ANNA boundary box.
+
+    Parameters
+    ----------
+    tmp_path_factory : pytest.TempPathFactory
+        Pytest factory for the module-scoped temporary directory.
+
+    Returns
+    -------
+    dict
+        ``src`` (source GRIB directory), ``refs_dir`` (directory with the
+        refs), ``ds`` (the converted dataset) and ``ds_clipped`` (the
+        converted dataset, clipped).
+    """
     from zarr_creator.__main__ import cli
 
     tmp_path = tmp_path_factory.mktemp("ifs")
@@ -134,6 +180,21 @@ def ifs_zarr(tmp_path_factory):
     refs_dir = index_refs.build_indexes_and_refs(T_ANALYSIS, settings)
 
     def convert(out, *extra_args):
+        """
+        Run the ``convert`` CLI for the IFS suite and open the result.
+
+        Parameters
+        ----------
+        out : pathlib.Path
+            Root directory for the output zarr.
+        *extra_args : str
+            Extra CLI arguments, e.g. the ``--clip-*`` flags.
+
+        Returns
+        -------
+        xarray.Dataset
+            The written ``ifs.zarr``, opened lazily.
+        """
         cli(
             [
                 "convert",
@@ -166,6 +227,7 @@ def ifs_zarr(tmp_path_factory):
 
 
 def test_index_files_kept_out_of_source(ifs_zarr):
+    """Check index files go next to the refs, not into the source directory."""
     assert not list(ifs_zarr["src"].glob("*.index"))
     refs_dir = Path(ifs_zarr["refs_dir"])
     assert sorted(p.name for p in refs_dir.glob("*.json")) == [
@@ -177,6 +239,7 @@ def test_index_files_kept_out_of_source(ifs_zarr):
 
 
 def test_contract_variables_and_dims(ifs_zarr):
+    """Check the output has exactly the contract variables with their dims."""
     ds = ifs_zarr["ds"]
     expected = {
         **{
@@ -198,6 +261,7 @@ def test_contract_variables_and_dims(ifs_zarr):
 
 
 def test_contract_coords(ifs_zarr):
+    """Check time, step, level and native lat/lon coordinates of the output."""
     ds = ifs_zarr["ds"]
     np.testing.assert_array_equal(
         ds.time.values, np.array(["2026-09-28T00:00"], dtype="datetime64[ns]")
@@ -216,6 +280,7 @@ def test_contract_coords(ifs_zarr):
 
 
 def test_clip_keeps_one_point_beyond_each_bound(ifs_zarr):
+    """Check clipping keeps one grid point beyond each bound and records them."""
     ds = ifs_zarr["ds_clipped"]
     # 0.5 deg fixture grid: one point beyond lat 40..72 and lon -27..39.5
     np.testing.assert_allclose(ds.latitude, np.arange(72.5, 39.49, -0.5))
@@ -235,6 +300,21 @@ def test_clip_keeps_one_point_beyond_each_bound(ifs_zarr):
 
 
 def _grid_ds(lats, lons):
+    """
+    Build a small all-zero dataset on a lat/lon grid.
+
+    Parameters
+    ----------
+    lats : list of float
+        Latitude coordinate values.
+    lons : list of float
+        Longitude coordinate values.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with one variable ``a`` on ``(latitude, longitude)``.
+    """
     return xr.Dataset(
         {"a": (("latitude", "longitude"), np.zeros((len(lats), len(lons))))},
         coords=dict(latitude=lats, longitude=lons),
@@ -242,6 +322,7 @@ def _grid_ds(lats, lons):
 
 
 def test_clip_partial_bounds():
+    """Check clipping with only some bounds set, or bounds beyond the grid."""
     ds = _grid_ds([3.0, 2.0, 1.0, 0.0], [0.0, 1.0, 2.0, 3.0])
     clipped = config_ifs.clip_to_bounds(ds, {"lat_min": 2.0})
     # unbounded sides keep the whole grid; one point beyond the bound
@@ -253,22 +334,52 @@ def test_clip_partial_bounds():
 
 
 def test_clip_rejects_box_outside_grid():
+    """Check clipping to a box that misses the grid raises a ValueError."""
     ds = _grid_ds([3.0, 2.0], [0.0, 1.0])
     with pytest.raises(ValueError, match="contain no latitude"):
         config_ifs.clip_to_bounds(ds, {"lat_min": 10.0})
 
 
 def _step(ds, step):
+    """
+    Select the first analysis time and one forecast step.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Converted IFS dataset.
+    step : int
+        Forecast step in hours.
+
+    Returns
+    -------
+    xarray.Dataset
+        The dataset at that time and step.
+    """
     return ds.isel(time=0).sel(prediction_timedelta=np.timedelta64(step, "h"))
 
 
 def _assert_field(da, expected):
+    """
+    Assert a field matches its expected values (relative tolerance 1e-6).
+
+    Non-index coordinates of ``da`` are dropped and ``expected`` is
+    transposed to the dims of ``da`` before comparing.
+
+    Parameters
+    ----------
+    da : xarray.DataArray
+        Field from the converted dataset.
+    expected : xarray.DataArray
+        Expected values, e.g. from the fixture's analytic fields.
+    """
     xr.testing.assert_allclose(
         da.reset_coords(drop=True), expected.transpose(*da.dims), rtol=1e-6
     )
 
 
 def test_values_on_native_grid(ifs_zarr):
+    """Check surface, pressure-level and static values on the native grid."""
     ds = ifs_zarr["ds"]
     lat, lon = ds.latitude, ds.longitude
 
@@ -281,6 +392,7 @@ def test_values_on_native_grid(ifs_zarr):
 
 
 def test_geopotential_from_geopotential_height(ifs_zarr):
+    """Check geopotential is derived as g0 times geopotential height."""
     ds = ifs_zarr["ds"]
     z = _step(ds, 3).geopotential.sel(level=925)
     _assert_field(
@@ -290,6 +402,7 @@ def test_geopotential_from_geopotential_height(ifs_zarr):
 
 
 def test_specific_humidity_from_relative_humidity(ifs_zarr):
+    """Check specific humidity is derived from relative humidity and T."""
     ds = ifs_zarr["ds"]
     lat, lon = ds.latitude, ds.longitude
     q = _step(ds, 3).specific_humidity.sel(level=850)
@@ -303,6 +416,7 @@ def test_specific_humidity_from_relative_humidity(ifs_zarr):
 
 
 def test_saturation_vapour_pressure():
+    """Check saturation vapour pressure against reference values."""
     esat = config_ifs.saturation_vapour_pressure
     # triple point, and reference values over water (300 K) and ice (240 K)
     np.testing.assert_allclose(esat(np.array(273.16)), 611.21)
@@ -316,12 +430,14 @@ def test_saturation_vapour_pressure():
 
 
 def test_specific_humidity_saturated_at_1000hpa():
+    """Check specific humidity of saturated air at 20 degC and 1000 hPa."""
     # saturated air at 20 degC and 1000 hPa holds about 14.7 g/kg
     q = config_ifs.specific_humidity_from_relative_humidity(100.0, 293.15, 1e5)
     np.testing.assert_allclose(q, 0.0147, rtol=0.02)
 
 
 def test_ifs_suite_registered():
+    """Check the IFS suite is registered with its config constants."""
     suite = get_suite("ifs")
     # compared with the config constants too, so that a misspelled constant
     # (silently replaced by the HARMONIE default) fails here

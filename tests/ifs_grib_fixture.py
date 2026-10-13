@@ -51,12 +51,48 @@ HYBRID_LEVELS = (136, 137)
 
 
 def field_value(lat, lon, step, base, scale):
-    """Analytic field used for every message (linear in lat, lon and step)."""
+    """
+    Analytic field used for every message (linear in lat, lon and step).
+
+    Parameters
+    ----------
+    lat : float or array-like
+        Latitude(s) in degrees.
+    lon : float or array-like
+        Longitude(s) in degrees.
+    step : int
+        Forecast step in hours.
+    base : float
+        Value offset of the field.
+    scale : float
+        Factor applied to the linear combination of lat, lon and step.
+
+    Returns
+    -------
+    float or array-like
+        ``base + scale * (lat + 0.1 * lon + step)``, broadcast over the inputs.
+    """
     return base + scale * (lat + 0.1 * lon + step)
 
 
 def pressure_base(short_name: str, level: int) -> float:
-    """Level-dependent base value, roughly like a standard atmosphere."""
+    """
+    Level-dependent base value, roughly like a standard atmosphere.
+
+    Parameters
+    ----------
+    short_name : str
+        GRIB ``shortName`` of a pressure-level field (a key of
+        ``PRESSURE_FIELDS``).
+    level : int
+        Pressure level in hPa.
+
+    Returns
+    -------
+    float
+        Base value of the field on that level; ``gh`` and ``t`` vary with
+        level, the other fields use the base from ``PRESSURE_FIELDS``.
+    """
     if short_name == "gh":
         # geopotential height (gpm), decreasing with pressure
         return 16000.0 * np.log(1000.0 / level)
@@ -66,16 +102,71 @@ def pressure_base(short_name: str, level: int) -> float:
 
 
 def surface_value(short_name, lat, lon, step):
+    """
+    Expected value of a surface field written by the fixture.
+
+    Parameters
+    ----------
+    short_name : str
+        GRIB ``shortName`` of the field (a key of ``SURFACE_FIELDS``).
+    lat : float or array-like
+        Latitude(s) in degrees.
+    lon : float or array-like
+        Longitude(s) in degrees.
+    step : int
+        Forecast step in hours.
+
+    Returns
+    -------
+    float or array-like
+        The field value, see `field_value`.
+    """
     base, scale = SURFACE_FIELDS[short_name]
     return field_value(lat, lon, step, base, scale)
 
 
 def pressure_value(short_name, level, lat, lon, step):
+    """
+    Expected value of a pressure-level field written by the fixture.
+
+    Parameters
+    ----------
+    short_name : str
+        GRIB ``shortName`` of the field (a key of ``PRESSURE_FIELDS``).
+    level : int
+        Pressure level in hPa.
+    lat : float or array-like
+        Latitude(s) in degrees.
+    lon : float or array-like
+        Longitude(s) in degrees.
+    step : int
+        Forecast step in hours.
+
+    Returns
+    -------
+    float or array-like
+        The field value, with the level-dependent base from `pressure_base`.
+    """
     scale = PRESSURE_FIELDS[short_name][1]
     return field_value(lat, lon, step, pressure_base(short_name, level), scale)
 
 
 def _grid_keys(lon_first=LON_FIRST, lon_last=LON_LAST):
+    """
+    ecCodes keys describing the fixture's ``regular_ll`` grid.
+
+    Parameters
+    ----------
+    lon_first : float, optional
+        Longitude of the first grid point in degrees.
+    lon_last : float, optional
+        Longitude of the last grid point in degrees.
+
+    Returns
+    -------
+    dict
+        Grid keys to set on a GRIB message.
+    """
     return dict(
         Ni=NI,
         Nj=NJ,
@@ -89,6 +180,26 @@ def _grid_keys(lon_first=LON_FIRST, lon_last=LON_LAST):
 
 
 def _write_message(f, sample, t_analysis, step, values, grid_keys, **keys):
+    """
+    Write one GRIB message, created from an ecCodes sample, to an open file.
+
+    Parameters
+    ----------
+    f : file object
+        Binary file the message is appended to.
+    sample : str
+        Name of the ecCodes GRIB sample to start from.
+    t_analysis : datetime.datetime
+        Analysis time, set as ``dataDate`` and ``dataTime``.
+    step : int
+        Forecast step in hours.
+    values : array-like
+        Field values on the grid, shape ``(NJ, NI)``.
+    grid_keys : dict
+        Grid keys, see `_grid_keys`.
+    **keys
+        Further ecCodes keys to set, e.g. ``shortName`` and ``level``.
+    """
     handle = eccodes.codes_grib_new_from_samples(sample)
     eccodes.codes_set_key_vals(handle, grid_keys)
     eccodes.codes_set(handle, "dataDate", int(t_analysis.strftime("%Y%m%d")))
@@ -102,12 +213,37 @@ def _write_message(f, sample, t_analysis, step, values, grid_keys, **keys):
 
 
 def _lat_lon():
+    """
+    Latitudes and longitudes of the fixture grid, ready to broadcast.
+
+    Returns
+    -------
+    lats : numpy.ndarray
+        Latitudes from north to south, shape ``(NJ, 1)``.
+    lons : numpy.ndarray
+        Longitudes from west to east, shape ``(1, NI)``.
+    """
     lats = np.linspace(LAT_FIRST, LAT_LAST, NJ)[:, None]
     lons = np.linspace(LON_FIRST, LON_LAST, NI)[None, :]
     return lats, lons
 
 
 def write_ifs_file(path, t_analysis: datetime.datetime, step: int) -> None:
+    """
+    Write a synthetic IFS GRIB file for one cycle and step.
+
+    The file holds the GRIB1 surface and pressure-level fields and the GRIB2
+    ``ptype`` and model-level messages described in the module docstring.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        Path of the file to write.
+    t_analysis : datetime.datetime
+        Analysis time of the cycle.
+    step : int
+        Forecast step in hours.
+    """
     lats, lons = _lat_lon()
     ones = np.ones((NJ, NI))
     grib1_grid = _grid_keys()

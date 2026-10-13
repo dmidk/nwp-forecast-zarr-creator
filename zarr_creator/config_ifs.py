@@ -60,10 +60,37 @@ GEOGCRS["ECMWF IFS spherical lat/lon",
 
 
 def _analysis_str(t: datetime.datetime) -> str:
+    """Format a time as used in the IFS file names, e.g. ``20260928T000000Z``.
+
+    Parameters
+    ----------
+    t : datetime.datetime
+        Timezone-aware time, converted to UTC.
+
+    Returns
+    -------
+    str
+        The time formatted as ``YYYYMMDDTHHMMSSZ``.
+    """
     return t.astimezone(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def grib_filename(t_analysis: datetime.datetime, step: int) -> str:
+    """Name of the IFS GRIB file of one cycle and forecast step.
+
+    Parameters
+    ----------
+    t_analysis : datetime.datetime
+        Analysis (base) time of the cycle, timezone-aware.
+    step : int
+        Forecast step in hours.
+
+    Returns
+    -------
+    str
+        File name relative to the source root, e.g.
+        ``dei_dj_ifs-ens-cf_od_oper_fc_20260928T000000Z_20260928T030000Z_3h``.
+    """
     t_valid = t_analysis + datetime.timedelta(hours=step)
     return (
         f"{FILENAME_PREFIX}_{_analysis_str(t_analysis)}_{_analysis_str(t_valid)}"
@@ -74,12 +101,37 @@ def grib_filename(t_analysis: datetime.datetime, step: int) -> str:
 def grib_file_groups(
     t_analysis: datetime.datetime, max_hour: int, member_id: str
 ) -> dict[str, list[str]]:
+    """Expected IFS GRIB file names of one cycle, in a single ``dj`` group.
+
+    Parameters
+    ----------
+    t_analysis : datetime.datetime
+        Analysis (base) time of the cycle, timezone-aware.
+    max_hour : int
+        Last forecast step in hours (inclusive); steps are every
+        ``STEP_HOURS`` hours from 0.
+    member_id : str
+        Ensemble member; unused, as only the control forecast is delivered.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Mapping of group name (``"dj"``) to the file names relative to the
+        source root.
+    """
     # member_id isn't part of the IFS file names (control forecast only)
     steps = range(0, max_hour + 1, STEP_HOURS)
     return {"dj": [grib_filename(t_analysis, step) for step in steps]}
 
 
 def make_magician():
+    """Create the gribscan magician used to assemble the IFS refs.
+
+    Returns
+    -------
+    gribscan.magician.IFSMagician
+        An IFS magician that puts each ``typeOfLevel`` into its own dataset.
+    """
     from gribscan.magician import IFSMagician
 
     class LevelTypeIFSMagician(IFSMagician):
@@ -91,16 +143,53 @@ def make_magician():
         """
 
         def m2dataset(self, meta):
+            """Name of the dataset a GRIB message belongs to.
+
+            Parameters
+            ----------
+            meta : dict
+                gribscan metadata of one GRIB message.
+
+            Returns
+            -------
+            str
+                The message's ``typeOfLevel``, e.g. ``"surface"``.
+            """
             return meta["attrs"]["typeOfLevel"]
 
     return LevelTypeIFSMagician()
 
 
 def _surface(short_name):
+    """Make a selector for a surface field.
+
+    Parameters
+    ----------
+    short_name : str
+        IFS ``shortName`` of the field, e.g. ``"2t"``.
+
+    Returns
+    -------
+    Callable[[xarray.Dataset], xarray.DataArray]
+        Function returning that variable from a converted dataset.
+    """
     return lambda ds: ds[short_name]
 
 
 def _static(short_name):
+    """Make a selector for a static (time-invariant) field.
+
+    Parameters
+    ----------
+    short_name : str
+        IFS ``shortName`` of the field, e.g. ``"lsm"``.
+
+    Returns
+    -------
+    Callable[[xarray.Dataset], xarray.DataArray]
+        Function returning that variable at the first time, with the ``time``
+        dim dropped.
+    """
     # statics are given at every step, keep the first one
     return lambda ds: ds[short_name].isel(time=0, drop=True)
 
@@ -124,6 +213,22 @@ T_ICE = ESAT_T0 - 23.0  # below this saturation is w.r.t. ice only
 
 
 def _tetens(t, a3, a4):
+    """Teten's formula for the saturation vapour pressure.
+
+    Parameters
+    ----------
+    t : float or array-like
+        Temperature (K).
+    a3 : float
+        Dimensionless coefficient of the formula.
+    a4 : float
+        Temperature coefficient of the formula (K).
+
+    Returns
+    -------
+    float or array-like
+        Saturation vapour pressure (Pa), of the same type as ``t``.
+    """
     return ESAT_A1 * np.exp(a3 * (t - ESAT_T0) / (t - a4))
 
 
@@ -132,6 +237,16 @@ def saturation_vapour_pressure(t):
 
     Over water above 0 degC, over ice below -23 degC and a quadratic blend in
     between, as the IFS uses when computing relative humidity.
+
+    Parameters
+    ----------
+    t : float or array-like
+        Temperature (K).
+
+    Returns
+    -------
+    float or array-like
+        Saturation vapour pressure (Pa), of the same type as ``t``.
     """
     alpha = np.clip((t - T_ICE) / (ESAT_T0 - T_ICE), 0, 1) ** 2
     return alpha * _tetens(t, **ESAT_WATER) + (1 - alpha) * _tetens(t, **ESAT_ICE)
@@ -142,16 +257,54 @@ def specific_humidity_from_relative_humidity(r, t, p):
 
     Inverts the IFS definition of relative humidity, e / e_sat with e_sat
     over the water/ice mix, at temperature ``t`` (K) and pressure ``p`` (Pa).
+
+    Parameters
+    ----------
+    r : float or array-like
+        Relative humidity (%).
+    t : float or array-like
+        Temperature (K).
+    p : float or array-like
+        Pressure (Pa).
+
+    Returns
+    -------
+    float or array-like
+        Specific humidity (kg/kg), broadcast over the inputs.
     """
     e = r / 100.0 * saturation_vapour_pressure(t)
     return EPSILON * e / (p - (1 - EPSILON) * e)
 
 
 def _pressure(short_name):
+    """Make a selector for a pressure-level field.
+
+    Parameters
+    ----------
+    short_name : str
+        IFS ``shortName`` of the field, e.g. ``"t"``.
+
+    Returns
+    -------
+    Callable[[xarray.Dataset], xarray.DataArray]
+        Function returning that variable from a converted dataset.
+    """
     return lambda ds: ds[short_name]
 
 
 def _geopotential(ds: xr.Dataset) -> xr.DataArray:
+    """Geopotential from the geopotential height ``gh`` times ``G0``.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Converted pressure-level dataset containing ``gh`` (m).
+
+    Returns
+    -------
+    xarray.DataArray
+        Geopotential (m**2 s**-2) with CF attributes.
+    """
     da = ds["gh"] * G0
     da.attrs = dict(
         units="m**2 s**-2",
@@ -163,6 +316,19 @@ def _geopotential(ds: xr.Dataset) -> xr.DataArray:
 
 
 def _specific_humidity(ds: xr.Dataset) -> xr.DataArray:
+    """Specific humidity derived from relative humidity and temperature.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Converted pressure-level dataset containing ``r`` (%), ``t`` (K) and
+        the ``level`` coordinate (hPa).
+
+    Returns
+    -------
+    xarray.DataArray
+        Specific humidity (kg kg**-1) with CF attributes.
+    """
     p = ds.level * 100.0  # hPa -> Pa
     da = specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
     da.attrs = dict(
@@ -218,6 +384,18 @@ LEVEL_DIM_NAMES = {"isobaricInhPa": "level"}
 
 
 def rechunk_to(ds: xr.Dataset) -> dict:
+    """Output chunking of a converted IFS part.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The converted part; unused, the chunking is the same for all parts.
+
+    Returns
+    -------
+    dict
+        Chunk size per dimension; dimensions not listed are not chunked.
+    """
     # one full field per chunk (at most 2101x901 at 0.1 deg, ~7.5 MB)
     return dict(time=1, prediction_timedelta=1, level=1)
 
@@ -234,6 +412,25 @@ def clip_to_bounds(ds: xr.Dataset, bounds: dict[str, float]) -> xr.Dataset:
     The extra point lets a later linear regrid onto points exactly on the box
     edge interpolate rather than extrapolate. The native grid and its order
     (latitudes run north to south) are kept.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Dataset with ``latitude`` and ``longitude`` dims.
+    bounds : dict[str, float]
+        Clip bounds, keyed by any of ``lat_min``, ``lat_max``, ``lon_min``
+        and ``lon_max``.
+
+    Returns
+    -------
+    xarray.Dataset
+        The clipped dataset, with each bound recorded as a ``clip_<name>``
+        attribute.
+
+    Raises
+    ------
+    ValueError
+        If no grid latitude or longitude lies within the bounds.
     """
     indexers = {}
     for axis, dim in (("lat", "latitude"), ("lon", "longitude")):
@@ -260,7 +457,25 @@ def clip_to_bounds(ds: xr.Dataset, bounds: dict[str, float]) -> xr.Dataset:
 
 
 def transform_part(ds: xr.Dataset, t_analysis: datetime.datetime) -> xr.Dataset:
-    """Bring a converted IFS part into the ERA5/WeatherBench2 layout."""
+    """Bring a converted IFS part into the ERA5/WeatherBench2 layout.
+
+    Renames ``lat``/``lon`` to ``latitude``/``longitude``, replaces the valid
+    ``time`` by ``prediction_timedelta`` and adds a length-1 analysis ``time``
+    dim to the forecast fields (statics stay 2D), then orders the dims as
+    ``time, prediction_timedelta, level, latitude, longitude``.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        A converted part with valid ``time``, ``level``, ``lat`` and ``lon``.
+    t_analysis : datetime.datetime
+        Analysis time of the cycle, timezone-aware.
+
+    Returns
+    -------
+    xarray.Dataset
+        The part in the ERA5/WeatherBench2 layout.
+    """
     ds = ds.rename(lat="latitude", lon="longitude")
     for var_name in ds.data_vars:
         # set by the gribscan IFS magician, refers to the old names

@@ -47,6 +47,23 @@ HARMONIE_LEVEL_DIM_NAMES = {
 def _harmonie_grib_file_groups(
     t_analysis: datetime.datetime, max_hour: int, member_id: str
 ) -> dict[str, list[str]]:
+    """Expected HARMONIE GRIB file names, grouped by file type.
+
+    Parameters
+    ----------
+    t_analysis : datetime.datetime
+        Analysis time, timezone-aware UTC.
+    max_hour : int
+        Last forecast hour (inclusive).
+    member_id : str
+        Ensemble member, part of the file names.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Mapping of file type (the suffix after the last ``_``, e.g. ``"sf"``,
+        ``"pl"``) to the file names relative to the source root.
+    """
     groups: dict[str, list[str]] = {}
     for name in expected_grib_filenames(t_analysis, max_hour, member_id):
         groups.setdefault(name.rsplit("_", 1)[-1], []).append(name)
@@ -54,12 +71,32 @@ def _harmonie_grib_file_groups(
 
 
 def _harmonie_magician():
+    """Create the gribscan magician used to assemble the HARMONIE refs.
+
+    Returns
+    -------
+    gribscan.magician.HarmonieMagician
+        A new HARMONIE magician.
+    """
     from gribscan.magician import HarmonieMagician
 
     return HarmonieMagician()
 
 
 def _harmonie_rechunk_to(ds: xr.Dataset) -> dict:
+    """Output chunking of a converted HARMONIE part.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The converted part, with ``x`` and ``y`` dims.
+
+    Returns
+    -------
+    dict
+        Chunk size per dimension: one time step and half of ``x`` and ``y``
+        (rounded up) per chunk.
+    """
     return dict(
         time=1,
         x=int(np.ceil(ds.x.size / 2)),
@@ -68,6 +105,20 @@ def _harmonie_rechunk_to(ds: xr.Dataset) -> dict:
 
 
 def _no_transform(ds: xr.Dataset, t_analysis: datetime.datetime) -> xr.Dataset:
+    """Default part post-processing, which leaves the part unchanged.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        The converted part.
+    t_analysis : datetime.datetime
+        Analysis time; unused.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``ds`` itself.
+    """
     return ds
 
 
@@ -92,6 +143,23 @@ class Suite:
 
 
 def _from_module(name: str, module: ModuleType) -> Suite:
+    """Build a `Suite` from a ``config_<name>`` module.
+
+    Attributes the module doesn't define fall back to the HARMONIE defaults
+    (see the module docstring).
+
+    Parameters
+    ----------
+    name : str
+        Suite name.
+    module : types.ModuleType
+        The suite's config module.
+
+    Returns
+    -------
+    Suite
+        The suite description.
+    """
     return Suite(
         name=name,
         data_collection=module.DATA_COLLECTION,
@@ -116,7 +184,23 @@ def _from_module(name: str, module: ModuleType) -> Suite:
 
 
 def get_suite(name: str) -> Suite:
-    """Look up a suite by name (e.g. ``dini``, ``ig``, ``ifs``)."""
+    """Look up a suite by name (e.g. ``dini``, ``ig``, ``ifs``).
+
+    Parameters
+    ----------
+    name : str
+        Suite name, one of ``SUITE_NAMES``.
+
+    Returns
+    -------
+    Suite
+        The suite described by its ``config_<name>`` module.
+
+    Raises
+    ------
+    ValueError
+        If ``name`` is not a supported suite.
+    """
     if name not in SUITE_NAMES:
         raise ValueError(
             f"Unsupported suite name: {name!r} (choose from {', '.join(SUITE_NAMES)})"

@@ -29,6 +29,18 @@ from ..suites import get_suite
 
 
 def _run_index(inputs: list[str], nprocs: int = 2, outdir: str | None = None) -> None:
+    """Create gribscan ``.index`` files by running ``gribscan-index`` in-process.
+
+    Parameters
+    ----------
+    inputs : list[str]
+        Local paths of the GRIB files to index.
+    nprocs : int, optional
+        Number of processes to index with.
+    outdir : str, optional
+        Directory to write the index files to; by default they are written
+        next to the GRIB files.
+    """
     import gribscan.tools
 
     # -f: always rebuild; the staging dir may be a warm cache containing
@@ -42,6 +54,21 @@ def _run_index(inputs: list[str], nprocs: int = 2, outdir: str | None = None) ->
 def _run_build_refs(
     index_files: list[str], refs_dir: str, prefix: str, magician
 ) -> None:
+    """Build the refs from index files and write one JSON per dataset.
+
+    Parameters
+    ----------
+    index_files : list[str]
+        Paths of the gribscan ``.index`` files.
+    refs_dir : str
+        Directory to write the refs to (created if missing), one
+        ``<dataset>.json`` per dataset of the magician.
+    prefix : str
+        Global prefix of the GRIB file paths in the refs (the source
+        directory, with a trailing ``/``).
+    magician : gribscan.magician.Magician
+        The gribscan magician that assembles the datasets.
+    """
     import gribscan
 
     # In-process equivalent of `gribscan-build`, whose `-m` choice only

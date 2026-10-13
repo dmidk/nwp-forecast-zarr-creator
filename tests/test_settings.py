@@ -140,11 +140,20 @@ def test_profile_cli_flags_override_env(monkeypatch):
 
 
 def _clear_clip_env(monkeypatch):
+    """
+    Unset all ``CLIP_*`` environment variables for the current test.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest monkeypatch fixture used to remove the variables.
+    """
     for name in s.CLIP_BOUND_NAMES:
         monkeypatch.delenv(f"CLIP_{name.upper()}", raising=False)
 
 
 def test_clip_bounds_from_env_and_flags(monkeypatch):
+    """Check clip bounds are read from env and that CLI flags override them."""
     import argparse
 
     from zarr_creator.pipeline.cli_args import (
@@ -171,6 +180,7 @@ def test_clip_bounds_from_env_and_flags(monkeypatch):
 
 
 def test_clip_bounds_invalid(monkeypatch):
+    """Check invalid, inverted, out-of-range or non-IFS clip bounds raise."""
     _clear_clip_env(monkeypatch)
     monkeypatch.setenv("CLIP_LAT_MIN", "north")
     with pytest.raises(ValueError, match="CLIP_LAT_MIN must be a number"):

@@ -84,6 +84,19 @@ class Settings:
 
         Called before indexing (CLI and runner), so that bad bounds fail
         before the conversion retry loop would retry them forever.
+
+        Returns
+        -------
+        dict[str, float]
+            The set bounds, keyed by ``lat_min``, ``lat_max``, ``lon_min``
+            and ``lon_max``; empty if none are set.
+
+        Raises
+        ------
+        ValueError
+            If a bound is outside -90..90 (latitude) or -180..180
+            (longitude), a minimum is larger than its maximum, or bounds are
+            set for a suite that doesn't support clipping.
         """
         bounds = {
             name: value
@@ -121,7 +134,28 @@ class Settings:
 
 
 def set_suite(settings: Settings, suite_name: str) -> Settings:
-    """Switch suite (in place), applying its defaults for unset options."""
+    """Switch suite (in place), applying its defaults for unset options.
+
+    ``max_hour`` and ``member_id`` are set to the suite's defaults unless
+    they were set explicitly (env or flag).
+
+    Parameters
+    ----------
+    settings : Settings
+        Settings to update in place.
+    suite_name : str
+        Name of the suite to switch to.
+
+    Returns
+    -------
+    Settings
+        ``settings`` itself.
+
+    Raises
+    ------
+    ValueError
+        If ``suite_name`` is not a supported suite.
+    """
     from .suites import get_suite
 
     suite = get_suite(suite_name)
@@ -227,6 +261,21 @@ def get_analysis_interval_in_hours(
     """Hours between analysis times (env: ``ANALYSIS_INTERVAL_HOURS``).
 
     Must divide 24 so the analysis times fall on the same hours every day.
+
+    Parameters
+    ----------
+    default : int, optional
+        Interval used when ``ANALYSIS_INTERVAL_HOURS`` is unset or empty.
+
+    Returns
+    -------
+    int
+        Hours between analysis times.
+
+    Raises
+    ------
+    ValueError
+        If the value is not an integer or doesn't divide 24.
     """
     raw = _getenv("ANALYSIS_INTERVAL_HOURS", str(default))
     try:
@@ -244,7 +293,23 @@ def get_analysis_interval_in_hours(
 
 
 def get_analysis_lag_in_hours(default: float = DEFAULT_ANALYSIS_LAG_HOURS) -> float:
-    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``)."""
+    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``).
+
+    Parameters
+    ----------
+    default : float, optional
+        Lag used when ``ANALYSIS_LAG_HOURS`` is unset or empty.
+
+    Returns
+    -------
+    float
+        Delivery lag in hours.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a number or is negative.
+    """
     raw = _getenv("ANALYSIS_LAG_HOURS", str(default))
     try:
         hours = float(raw)  # type: ignore[arg-type]
@@ -281,6 +346,19 @@ def compute_analysis_time(
 
 
 def is_latest(value) -> bool:
+    """Whether a ``--t-analysis`` value means the latest analysis time.
+
+    Parameters
+    ----------
+    value : str or datetime.datetime or None
+        The value to check.
+
+    Returns
+    -------
+    bool
+        True for ``None`` or ``"latest"`` (case and surrounding whitespace
+        ignored).
+    """
     return value is None or (isinstance(value, str) and value.strip().lower() == LATEST)
 
 
@@ -317,6 +395,27 @@ def resolve_t_analysis_for_suite(
 
     ``ANALYSIS_LAG_HOURS`` / ``ANALYSIS_INTERVAL_HOURS`` override the suite's
     values when set.
+
+    Parameters
+    ----------
+    value : str or datetime.datetime or None
+        ``None`` or ``"latest"`` for the most recent analysis time, else a
+        timezone-aware datetime or ISO8601 string.
+    suite_name : str
+        Name of the suite whose cycle interval and lag to use.
+    now : datetime.datetime, optional
+        Current time; defaults to now (UTC).
+
+    Returns
+    -------
+    datetime.datetime
+        The analysis time in UTC.
+
+    Raises
+    ------
+    ValueError
+        If the suite is unknown, the time is not timezone-aware, or the
+        interval/lag environment variables are invalid.
     """
     from .suites import get_suite
 

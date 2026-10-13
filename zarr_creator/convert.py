@@ -29,6 +29,27 @@ def _rename_level_dim(
     Level types without a mapping (e.g. ``entireAtmosphere`` fields that share
     the dim) don't take part, but at least one level type must be mapped and
     all mapped ones must agree.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        A converted part with a ``level`` dim.
+    level_types : set[str]
+        GRIB level types (``typeOfLevel``) of the variables using that dim.
+    level_dim_names : dict[str, str]
+        The suite's mapping of level type to output level dim name.
+
+    Returns
+    -------
+    xarray.Dataset
+        ``ds`` with ``level`` renamed (unchanged if the name is ``level``).
+
+    Raises
+    ------
+    NotImplementedError
+        If none of ``level_types`` has a mapping.
+    ValueError
+        If the mapped level types map to different dim names.
     """
     names = {level_dim_names[lt] for lt in level_types if lt in level_dim_names}
     if not names:
