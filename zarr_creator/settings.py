@@ -79,7 +79,7 @@ class Settings:
                 f"got: {self.suite_name!r}"
             )
 
-    def clip_bounds(self) -> dict[str, float]:
+    def get_clip_bounds(self) -> dict[str, float]:
         """The clip bounds that are set, validated against each other and the suite.
 
         Called before indexing (CLI and runner), so that bad bounds fail

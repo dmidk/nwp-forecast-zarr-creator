@@ -9,14 +9,18 @@ import xarray as xr
 
 from tests.ifs_grib_fixture import LAT_FIRST, LAT_LAST, LON_FIRST, LON_LAST, NI, NJ
 from tests.ifs_grib_fixture import PRESSURE_LEVELS as FIXTURE_LEVELS
-from tests.ifs_grib_fixture import pressure_value, surface_value, write_ifs_file
+from tests.ifs_grib_fixture import (
+    calc_pressure_value,
+    calc_surface_value,
+    write_ifs_file,
+)
 from zarr_creator import config_ifs
 from zarr_creator import settings as s
 from zarr_creator.pipeline import index_refs, runner
 from zarr_creator.suites import get_suite
 
 
-def _utc(*args):
+def _make_utc(*args):
     """
     Build a timezone-aware UTC datetime.
 
@@ -33,12 +37,12 @@ def _utc(*args):
     return datetime.datetime(*args, tzinfo=datetime.timezone.utc)
 
 
-T_ANALYSIS = _utc(2026, 9, 28, 0)
+T_ANALYSIS = _make_utc(2026, 9, 28, 0)
 
 
 def test_grib_filenames():
     """Check the IFS GRIB filenames generated for a cycle's forecast steps."""
-    groups = config_ifs.grib_file_groups(T_ANALYSIS, 6, "control")
+    groups = config_ifs.get_grib_file_groups(T_ANALYSIS, 6, "control")
     assert groups == {
         "dj": [
             "dei_dj_ifs-ens-cf_od_oper_fc_20260928T000000Z_20260928T000000Z_0h",
@@ -46,7 +50,9 @@ def test_grib_filenames():
             "dei_dj_ifs-ens-cf_od_oper_fc_20260928T000000Z_20260928T060000Z_6h",
         ]
     }
-    names = config_ifs.grib_file_groups(_utc(2026, 9, 28, 12), 72, "control")["dj"]
+    names = config_ifs.get_grib_file_groups(_make_utc(2026, 9, 28, 12), 72, "control")[
+        "dj"
+    ]
     assert len(names) == 25
     # valid time rolls over the month
     assert names[-1].endswith("_20260928T120000Z_20261001T120000Z_72h")
@@ -71,27 +77,27 @@ def test_latest_analysis_time_per_suite(monkeypatch, suite_name, now, expected):
     monkeypatch.delenv("ANALYSIS_LAG_HOURS", raising=False)
     monkeypatch.delenv("ANALYSIS_INTERVAL_HOURS", raising=False)
     t = s.resolve_t_analysis_for_suite(
-        "latest", suite_name, now=_utc(2026, 9, 28, *now)
+        "latest", suite_name, now=_make_utc(2026, 9, 28, *now)
     )
-    assert t == _utc(2026, 9, 28, *expected)
+    assert t == _make_utc(2026, 9, 28, *expected)
 
 
 def test_explicit_analysis_time_ignores_suite_lag():
     """Check an explicit analysis time is used as given, without suite lag."""
-    now = _utc(2026, 9, 28, 13, 30)
+    now = _make_utc(2026, 9, 28, 13, 30)
     assert s.resolve_t_analysis_for_suite(
         "2026-09-28T00:00:00Z", "ifs", now=now
-    ) == _utc(2026, 9, 28)
+    ) == _make_utc(2026, 9, 28)
 
 
 def test_compute_analysis_time_interval():
     """Check the analysis time is floored to the cycle interval after the lag."""
     assert s.compute_analysis_time(
-        _utc(2026, 9, 28, 12, 59), lag_hours=7, interval_hours=6
-    ) == _utc(2026, 9, 28, 0)
+        _make_utc(2026, 9, 28, 12, 59), lag_hours=7, interval_hours=6
+    ) == _make_utc(2026, 9, 28, 0)
     assert s.compute_analysis_time(
-        _utc(2026, 9, 28, 13), lag_hours=7, interval_hours=6
-    ) == _utc(2026, 9, 28, 6)
+        _make_utc(2026, 9, 28, 13), lag_hours=7, interval_hours=6
+    ) == _make_utc(2026, 9, 28, 6)
 
 
 def test_suite_defaults_apply_unless_set(monkeypatch):
@@ -123,8 +129,8 @@ def test_watch_uses_suite_cycle(tmp_path, monkeypatch):
     monkeypatch.setattr(
         runner, "process_one", lambda t, settings, **k: processed.append(t)
     )
-    runner.poll_once(cfg, now=_utc(2026, 9, 28, 13, 30))
-    assert processed == [_utc(2026, 9, 28, 6)]
+    runner.poll_once(cfg, now=_make_utc(2026, 9, 28, 13, 30))
+    assert processed == [_make_utc(2026, 9, 28, 6)]
 
 
 def _write_fixture(src_dir, steps=(0, 3)):
@@ -140,7 +146,7 @@ def _write_fixture(src_dir, steps=(0, 3)):
     """
     for step in steps:
         write_ifs_file(
-            src_dir / config_ifs.grib_filename(T_ANALYSIS, step), T_ANALYSIS, step
+            src_dir / config_ifs.make_grib_filename(T_ANALYSIS, step), T_ANALYSIS, step
         )
 
 
@@ -293,13 +299,13 @@ def test_clip_keeps_one_point_beyond_each_bound(ifs_zarr):
     }
     # values are untouched, the statics are clipped too
     _assert_field(
-        _step(ds, 3).mean_sea_level_pressure,
-        surface_value("msl", ds.latitude, ds.longitude, 3),
+        _select_step(ds, 3).mean_sea_level_pressure,
+        calc_surface_value("msl", ds.latitude, ds.longitude, 3),
     )
     assert ds.land_sea_mask.shape == (ds.latitude.size, ds.longitude.size)
 
 
-def _grid_ds(lats, lons):
+def _make_grid_ds(lats, lons):
     """
     Build a small all-zero dataset on a lat/lon grid.
 
@@ -323,7 +329,7 @@ def _grid_ds(lats, lons):
 
 def test_clip_partial_bounds():
     """Check clipping with only some bounds set, or bounds beyond the grid."""
-    ds = _grid_ds([3.0, 2.0, 1.0, 0.0], [0.0, 1.0, 2.0, 3.0])
+    ds = _make_grid_ds([3.0, 2.0, 1.0, 0.0], [0.0, 1.0, 2.0, 3.0])
     clipped = config_ifs.clip_to_bounds(ds, {"lat_min": 2.0})
     # unbounded sides keep the whole grid; one point beyond the bound
     assert clipped.latitude.values.tolist() == [3.0, 2.0, 1.0]
@@ -335,12 +341,12 @@ def test_clip_partial_bounds():
 
 def test_clip_rejects_box_outside_grid():
     """Check clipping to a box that misses the grid raises a ValueError."""
-    ds = _grid_ds([3.0, 2.0], [0.0, 1.0])
+    ds = _make_grid_ds([3.0, 2.0], [0.0, 1.0])
     with pytest.raises(ValueError, match="contain no latitude"):
         config_ifs.clip_to_bounds(ds, {"lat_min": 10.0})
 
 
-def _step(ds, step):
+def _select_step(ds, step):
     """
     Select the first analysis time and one forecast step.
 
@@ -383,20 +389,20 @@ def test_values_on_native_grid(ifs_zarr):
     ds = ifs_zarr["ds"]
     lat, lon = ds.latitude, ds.longitude
 
-    msl = _step(ds, 3).mean_sea_level_pressure
-    _assert_field(msl, surface_value("msl", lat, lon, 3))
-    w = _step(ds, 0).vertical_velocity.sel(level=850)
-    _assert_field(w, pressure_value("w", 850, lat, lon, 0))
+    msl = _select_step(ds, 3).mean_sea_level_pressure
+    _assert_field(msl, calc_surface_value("msl", lat, lon, 3))
+    w = _select_step(ds, 0).vertical_velocity.sel(level=850)
+    _assert_field(w, calc_pressure_value("w", 850, lat, lon, 0))
     # statics come from the first step
-    _assert_field(ds.geopotential_at_surface, surface_value("z", lat, lon, 0))
+    _assert_field(ds.geopotential_at_surface, calc_surface_value("z", lat, lon, 0))
 
 
 def test_geopotential_from_geopotential_height(ifs_zarr):
     """Check geopotential is derived as g0 times geopotential height."""
     ds = ifs_zarr["ds"]
-    z = _step(ds, 3).geopotential.sel(level=925)
+    z = _select_step(ds, 3).geopotential.sel(level=925)
     _assert_field(
-        z, config_ifs.G0 * pressure_value("gh", 925, ds.latitude, ds.longitude, 3)
+        z, config_ifs.G0 * calc_pressure_value("gh", 925, ds.latitude, ds.longitude, 3)
     )
     assert z.attrs["units"] == "m**2 s**-2"
 
@@ -405,10 +411,10 @@ def test_specific_humidity_from_relative_humidity(ifs_zarr):
     """Check specific humidity is derived from relative humidity and T."""
     ds = ifs_zarr["ds"]
     lat, lon = ds.latitude, ds.longitude
-    q = _step(ds, 3).specific_humidity.sel(level=850)
-    expected = config_ifs.specific_humidity_from_relative_humidity(
-        pressure_value("r", 850, lat, lon, 3),
-        pressure_value("t", 850, lat, lon, 3),
+    q = _select_step(ds, 3).specific_humidity.sel(level=850)
+    expected = config_ifs.calc_specific_humidity_from_relative_humidity(
+        calc_pressure_value("r", 850, lat, lon, 3),
+        calc_pressure_value("t", 850, lat, lon, 3),
         850e2,
     )
     _assert_field(q, expected)
@@ -417,22 +423,22 @@ def test_specific_humidity_from_relative_humidity(ifs_zarr):
 
 def test_saturation_vapour_pressure():
     """Check saturation vapour pressure against reference values."""
-    esat = config_ifs.saturation_vapour_pressure
+    esat = config_ifs.calc_saturation_vapour_pressure
     # triple point, and reference values over water (300 K) and ice (240 K)
     np.testing.assert_allclose(esat(np.array(273.16)), 611.21)
     np.testing.assert_allclose(esat(np.array(300.0)), 3536.8, rtol=0.01)
     np.testing.assert_allclose(esat(np.array(240.0)), 27.26, rtol=0.02)
     # the mixed-phase blend lies between the ice and water values
     t = np.array(260.0)
-    water = config_ifs._tetens(t, **config_ifs.ESAT_WATER)
-    ice = config_ifs._tetens(t, **config_ifs.ESAT_ICE)
+    water = config_ifs._calc_tetens(t, **config_ifs.ESAT_WATER)
+    ice = config_ifs._calc_tetens(t, **config_ifs.ESAT_ICE)
     assert ice < esat(t) < water
 
 
 def test_specific_humidity_saturated_at_1000hpa():
     """Check specific humidity of saturated air at 20 degC and 1000 hPa."""
     # saturated air at 20 degC and 1000 hPa holds about 14.7 g/kg
-    q = config_ifs.specific_humidity_from_relative_humidity(100.0, 293.15, 1e5)
+    q = config_ifs.calc_specific_humidity_from_relative_humidity(100.0, 293.15, 1e5)
     np.testing.assert_allclose(q, 0.0147, rtol=0.02)
 
 

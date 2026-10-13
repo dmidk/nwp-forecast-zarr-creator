@@ -66,12 +66,20 @@ def test_indexes_in_place_no_staging(tmp_path, monkeypatch):
     settings = _settings(
         src_grib_root_uri=str(src), refs_root_path=str(tmp_path / "refs")
     )
+    # Calls to the gribscan steps, in order, so the test can check which files
+    # were indexed and how the refs were built.
     calls = []
+    # `_run_index` runs `gribscan-index` on the GRIB files, which can't parse
+    # the fake files written by `_touch_files`. Record the input paths
+    # instead: with no staging they must be the source files themselves.
     monkeypatch.setattr(
         index_refs,
         "_run_index",
         lambda inputs, nprocs=2, outdir=None: calls.append(("index", inputs)),
     )
+    # `_run_build_refs` reads the `.index` files that `_run_index` would have
+    # written (they don't exist here) and writes the refs JSONs. Record its
+    # arguments instead, to check the refs dir and the source path prefix.
     monkeypatch.setattr(
         index_refs,
         "_run_build_refs",
@@ -79,6 +87,9 @@ def test_indexes_in_place_no_staging(tmp_path, monkeypatch):
             ("build", indexes, refs_dir, prefix)
         ),
     )
+    # The real function points eccodes at the repo's GRIB definitions, which
+    # changes eccodes state for the whole test process. Nothing is decoded
+    # here, so skip it to keep the test free of side effects.
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
     refs_dir = index_refs.build_indexes_and_refs(t, settings)
     assert refs_dir == str(

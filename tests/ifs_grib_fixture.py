@@ -37,7 +37,7 @@ SURFACE_FIELDS = {
     "z": (500.0, 10.0),
 }
 PRESSURE_FIELDS = {
-    "gh": (0.0, 1.0),  # base per level, see `pressure_base`
+    "gh": (0.0, 1.0),  # base per level, see `calc_pressure_base`
     "t": (0.0, 0.1),
     "r": (50.0, 0.3),
     "u": (5.0, 0.1),
@@ -50,7 +50,7 @@ HYBRID_SHORT_NAMES = ("t", "q")
 HYBRID_LEVELS = (136, 137)
 
 
-def field_value(lat, lon, step, base, scale):
+def calc_field_value(lat, lon, step, base, scale):
     """
     Analytic field used for every message (linear in lat, lon and step).
 
@@ -75,7 +75,7 @@ def field_value(lat, lon, step, base, scale):
     return base + scale * (lat + 0.1 * lon + step)
 
 
-def pressure_base(short_name: str, level: int) -> float:
+def calc_pressure_base(short_name: str, level: int) -> float:
     """
     Level-dependent base value, roughly like a standard atmosphere.
 
@@ -101,7 +101,7 @@ def pressure_base(short_name: str, level: int) -> float:
     return PRESSURE_FIELDS[short_name][0]
 
 
-def surface_value(short_name, lat, lon, step):
+def calc_surface_value(short_name, lat, lon, step):
     """
     Expected value of a surface field written by the fixture.
 
@@ -119,13 +119,13 @@ def surface_value(short_name, lat, lon, step):
     Returns
     -------
     float or array-like
-        The field value, see `field_value`.
+        The field value, see `calc_field_value`.
     """
     base, scale = SURFACE_FIELDS[short_name]
-    return field_value(lat, lon, step, base, scale)
+    return calc_field_value(lat, lon, step, base, scale)
 
 
-def pressure_value(short_name, level, lat, lon, step):
+def calc_pressure_value(short_name, level, lat, lon, step):
     """
     Expected value of a pressure-level field written by the fixture.
 
@@ -145,13 +145,15 @@ def pressure_value(short_name, level, lat, lon, step):
     Returns
     -------
     float or array-like
-        The field value, with the level-dependent base from `pressure_base`.
+        The field value, with the level-dependent base from `calc_pressure_base`.
     """
     scale = PRESSURE_FIELDS[short_name][1]
-    return field_value(lat, lon, step, pressure_base(short_name, level), scale)
+    return calc_field_value(
+        lat, lon, step, calc_pressure_base(short_name, level), scale
+    )
 
 
-def _grid_keys(lon_first=LON_FIRST, lon_last=LON_LAST):
+def _make_grid_keys(lon_first=LON_FIRST, lon_last=LON_LAST):
     """
     ecCodes keys describing the fixture's ``regular_ll`` grid.
 
@@ -196,7 +198,7 @@ def _write_message(f, sample, t_analysis, step, values, grid_keys, **keys):
     values : array-like
         Field values on the grid, shape ``(NJ, NI)``.
     grid_keys : dict
-        Grid keys, see `_grid_keys`.
+        Grid keys, see `_make_grid_keys`.
     **keys
         Further ecCodes keys to set, e.g. ``shortName`` and ``level``.
     """
@@ -212,7 +214,7 @@ def _write_message(f, sample, t_analysis, step, values, grid_keys, **keys):
     eccodes.codes_release(handle)
 
 
-def _lat_lon():
+def _make_lat_lon():
     """
     Latitudes and longitudes of the fixture grid, ready to broadcast.
 
@@ -244,14 +246,14 @@ def write_ifs_file(path, t_analysis: datetime.datetime, step: int) -> None:
     step : int
         Forecast step in hours.
     """
-    lats, lons = _lat_lon()
+    lats, lons = _make_lat_lon()
     ones = np.ones((NJ, NI))
-    grib1_grid = _grid_keys()
+    grib1_grid = _make_grid_keys()
     # the real GRIB2 messages give longitudes in 0..360 (240 instead of -120)
-    grib2_grid = _grid_keys(LON_FIRST % 360, LON_LAST % 360)
+    grib2_grid = _make_grid_keys(LON_FIRST % 360, LON_LAST % 360)
     with open(path, "wb") as f:
         for short_name in SURFACE_FIELDS:
-            values = surface_value(short_name, lats, lons, step) * ones
+            values = calc_surface_value(short_name, lats, lons, step) * ones
             _write_message(
                 f,
                 "regular_ll_sfc_grib1",
@@ -263,7 +265,7 @@ def write_ifs_file(path, t_analysis: datetime.datetime, step: int) -> None:
             )
         for short_name in PRESSURE_FIELDS:
             for level in PRESSURE_LEVELS:
-                values = pressure_value(short_name, level, lats, lons, step) * ones
+                values = calc_pressure_value(short_name, level, lats, lons, step) * ones
                 _write_message(
                     f,
                     "regular_ll_pl_grib1",

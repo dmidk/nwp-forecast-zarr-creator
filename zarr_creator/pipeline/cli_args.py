@@ -166,5 +166,5 @@ def settings_from_args(
         if value is not None:
             setattr(settings, f"clip_{name}", value)
     # fail on bad clip bounds now rather than after indexing
-    settings.clip_bounds()
+    settings.get_clip_bounds()
     return settings

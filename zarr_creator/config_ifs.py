@@ -59,7 +59,7 @@ GEOGCRS["ECMWF IFS spherical lat/lon",
 """.strip()
 
 
-def _analysis_str(t: datetime.datetime) -> str:
+def _format_analysis_time(t: datetime.datetime) -> str:
     """Format a time as used in the IFS file names, e.g. ``20260928T000000Z``.
 
     Parameters
@@ -75,7 +75,7 @@ def _analysis_str(t: datetime.datetime) -> str:
     return t.astimezone(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def grib_filename(t_analysis: datetime.datetime, step: int) -> str:
+def make_grib_filename(t_analysis: datetime.datetime, step: int) -> str:
     """Name of the IFS GRIB file of one cycle and forecast step.
 
     Parameters
@@ -93,12 +93,12 @@ def grib_filename(t_analysis: datetime.datetime, step: int) -> str:
     """
     t_valid = t_analysis + datetime.timedelta(hours=step)
     return (
-        f"{FILENAME_PREFIX}_{_analysis_str(t_analysis)}_{_analysis_str(t_valid)}"
+        f"{FILENAME_PREFIX}_{_format_analysis_time(t_analysis)}_{_format_analysis_time(t_valid)}"
         f"_{step}h"
     )
 
 
-def grib_file_groups(
+def get_grib_file_groups(
     t_analysis: datetime.datetime, max_hour: int, member_id: str
 ) -> dict[str, list[str]]:
     """Expected IFS GRIB file names of one cycle, in a single ``dj`` group.
@@ -121,7 +121,7 @@ def grib_file_groups(
     """
     # member_id isn't part of the IFS file names (control forecast only)
     steps = range(0, max_hour + 1, STEP_HOURS)
-    return {"dj": [grib_filename(t_analysis, step) for step in steps]}
+    return {"dj": [make_grib_filename(t_analysis, step) for step in steps]}
 
 
 def make_magician():
@@ -160,7 +160,7 @@ def make_magician():
     return LevelTypeIFSMagician()
 
 
-def _surface(short_name):
+def _make_surface_selector(short_name):
     """Make a selector for a surface field.
 
     Parameters
@@ -176,7 +176,7 @@ def _surface(short_name):
     return lambda ds: ds[short_name]
 
 
-def _static(short_name):
+def _make_static_selector(short_name):
     """Make a selector for a static (time-invariant) field.
 
     Parameters
@@ -198,7 +198,7 @@ def _static(short_name):
 # 2026-09-28T00Z cycle): 50, 70, 100, 150, 200, 250, 300, 400, 500, 700, 850,
 # 925, 950 and 1000 hPa, with gh, t, r, u, v and w. All of them are written
 # as delivered. There is no geopotential and no specific humidity, so those
-# are derived (see `_geopotential` and `specific_humidity_from_relative_humidity`).
+# are derived (see `_calc_geopotential` and `_calc_specific_humidity`).
 
 G0 = 9.80665  # m s-2, used by ECMWF to define geopotential height
 EPSILON = 0.621981  # R_d / R_v as in the IFS
@@ -212,7 +212,7 @@ ESAT_ICE = dict(a3=22.587, a4=-0.7)
 T_ICE = ESAT_T0 - 23.0  # below this saturation is w.r.t. ice only
 
 
-def _tetens(t, a3, a4):
+def _calc_tetens(t, a3, a4):
     """Teten's formula for the saturation vapour pressure.
 
     Parameters
@@ -232,7 +232,7 @@ def _tetens(t, a3, a4):
     return ESAT_A1 * np.exp(a3 * (t - ESAT_T0) / (t - a4))
 
 
-def saturation_vapour_pressure(t):
+def calc_saturation_vapour_pressure(t):
     """IFS mixed-phase saturation vapour pressure (Pa) at temperature ``t`` (K).
 
     Over water above 0 degC, over ice below -23 degC and a quadratic blend in
@@ -249,10 +249,12 @@ def saturation_vapour_pressure(t):
         Saturation vapour pressure (Pa), of the same type as ``t``.
     """
     alpha = np.clip((t - T_ICE) / (ESAT_T0 - T_ICE), 0, 1) ** 2
-    return alpha * _tetens(t, **ESAT_WATER) + (1 - alpha) * _tetens(t, **ESAT_ICE)
+    return alpha * _calc_tetens(t, **ESAT_WATER) + (1 - alpha) * _calc_tetens(
+        t, **ESAT_ICE
+    )
 
 
-def specific_humidity_from_relative_humidity(r, t, p):
+def calc_specific_humidity_from_relative_humidity(r, t, p):
     """Specific humidity (kg/kg) from IFS relative humidity ``r`` (%).
 
     Inverts the IFS definition of relative humidity, e / e_sat with e_sat
@@ -272,11 +274,11 @@ def specific_humidity_from_relative_humidity(r, t, p):
     float or array-like
         Specific humidity (kg/kg), broadcast over the inputs.
     """
-    e = r / 100.0 * saturation_vapour_pressure(t)
+    e = r / 100.0 * calc_saturation_vapour_pressure(t)
     return EPSILON * e / (p - (1 - EPSILON) * e)
 
 
-def _pressure(short_name):
+def _make_pressure_selector(short_name):
     """Make a selector for a pressure-level field.
 
     Parameters
@@ -292,7 +294,7 @@ def _pressure(short_name):
     return lambda ds: ds[short_name]
 
 
-def _geopotential(ds: xr.Dataset) -> xr.DataArray:
+def _calc_geopotential(ds: xr.Dataset) -> xr.DataArray:
     """Geopotential from the geopotential height ``gh`` times ``G0``.
 
     Parameters
@@ -315,7 +317,7 @@ def _geopotential(ds: xr.Dataset) -> xr.DataArray:
     return da
 
 
-def _specific_humidity(ds: xr.Dataset) -> xr.DataArray:
+def _calc_specific_humidity(ds: xr.Dataset) -> xr.DataArray:
     """Specific humidity derived from relative humidity and temperature.
 
     Parameters
@@ -330,7 +332,7 @@ def _specific_humidity(ds: xr.Dataset) -> xr.DataArray:
         Specific humidity (kg kg**-1) with CF attributes.
     """
     p = ds.level * 100.0  # hPa -> Pa
-    da = specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
+    da = calc_specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
     da.attrs = dict(
         units="kg kg**-1",
         long_name="Specific humidity",
@@ -354,13 +356,13 @@ STATIC_VARIABLES = {
     "geopotential_at_surface": "z",
 }
 PRESSURE_VARIABLES = {
-    "geopotential": _geopotential,
-    "temperature": _pressure("t"),
-    "specific_humidity": _specific_humidity,
-    "u_component_of_wind": _pressure("u"),
-    "v_component_of_wind": _pressure("v"),
+    "geopotential": _calc_geopotential,
+    "temperature": _make_pressure_selector("t"),
+    "specific_humidity": _calc_specific_humidity,
+    "u_component_of_wind": _make_pressure_selector("u"),
+    "v_component_of_wind": _make_pressure_selector("v"),
     # IFS `w` on pressure levels is omega (Pa s-1), as ERA5 vertical_velocity
-    "vertical_velocity": _pressure("w"),
+    "vertical_velocity": _make_pressure_selector("w"),
 }
 
 DATA_COLLECTION = OrderedDict(
@@ -368,8 +370,14 @@ DATA_COLLECTION = OrderedDict(
         dict(
             level_type="surface",
             variables={
-                **{name: _surface(sn) for name, sn in SURFACE_VARIABLES.items()},
-                **{name: _static(sn) for name, sn in STATIC_VARIABLES.items()},
+                **{
+                    name: _make_surface_selector(sn)
+                    for name, sn in SURFACE_VARIABLES.items()
+                },
+                **{
+                    name: _make_static_selector(sn)
+                    for name, sn in STATIC_VARIABLES.items()
+                },
             },
         ),
         dict(
@@ -383,7 +391,7 @@ DATA_COLLECTION = OrderedDict(
 LEVEL_DIM_NAMES = {"isobaricInhPa": "level"}
 
 
-def rechunk_to(ds: xr.Dataset) -> dict:
+def get_chunk_sizes(ds: xr.Dataset) -> dict:
     """Output chunking of a converted IFS part.
 
     Parameters

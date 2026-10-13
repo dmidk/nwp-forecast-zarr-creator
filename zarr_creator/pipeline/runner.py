@@ -85,7 +85,7 @@ def process_one(
     """
     t_analysis = require_utc(t_analysis)
     # bad clip bounds would otherwise only fail in the retried conversion
-    settings.clip_bounds()
+    settings.get_clip_bounds()
     if refs_done(t_analysis, settings):
         logger.info(f"Analysis time {t_analysis.isoformat()} is already processed")
         return "skipped"

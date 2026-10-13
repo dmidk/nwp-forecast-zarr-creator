@@ -84,7 +84,7 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
         )
 
     suite = get_suite(settings.suite_name)
-    clip_bounds = settings.clip_bounds()
+    clip_bounds = settings.get_clip_bounds()
 
     parts = {}
     for part_id, part_details in suite.data_collection.items():
@@ -162,7 +162,7 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
         parts[part_id] = ds_part
 
     for part_id, ds_part in parts.items():
-        rechunk_to = suite.rechunk_to(ds_part)
+        rechunk_to = suite.get_chunk_sizes(ds_part)
 
         # set zarr-creator version
         ds_part.attrs["zarr_creator_version"] = __version__

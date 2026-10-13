@@ -107,7 +107,7 @@ def build_indexes_and_refs(
     if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
-    file_groups = suite.grib_file_groups(
+    file_groups = suite.get_grib_file_groups(
         t_analysis, settings.max_hour, settings.member_id
     )
     filenames = [name for names in file_groups.values() for name in names]
