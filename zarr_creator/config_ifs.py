@@ -118,9 +118,20 @@ def get_grib_file_groups(
     dict[str, list[str]]
         Mapping of group name (``"dj"``) to the file names relative to the
         source root.
+
+    Raises
+    ------
+    ValueError
+        If ``max_hour`` is below ``STEP_HOURS``, which gives a single step.
     """
     # member_id isn't part of the IFS file names (control forecast only)
     steps = range(0, max_hour + 1, STEP_HOURS)
+    # gribscan drops the time dim of a single file, which convert needs
+    if len(steps) < 2:
+        raise ValueError(
+            f"MAX_HOUR must be >= {STEP_HOURS} for IFS (at least two forecast "
+            f"steps), got: {max_hour}"
+        )
     return {"dj": [make_grib_filename(t_analysis, step) for step in steps]}
 
 

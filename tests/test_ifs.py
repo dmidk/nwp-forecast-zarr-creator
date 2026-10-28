@@ -58,6 +58,13 @@ def test_grib_filenames():
     assert names[-1].endswith("_20260928T120000Z_20261001T120000Z_72h")
 
 
+@pytest.mark.parametrize("max_hour", [0, 2])
+def test_grib_filenames_reject_single_step(max_hour):
+    """Check a max_hour giving only the 0h step raises a ValueError."""
+    with pytest.raises(ValueError, match="MAX_HOUR must be >= 3"):
+        config_ifs.get_grib_file_groups(T_ANALYSIS, max_hour, "control")
+
+
 @pytest.mark.parametrize(
     "suite_name, now, expected",
     [
