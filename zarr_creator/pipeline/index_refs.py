@@ -25,8 +25,8 @@ from ..settings import (
     FILE_TYPES,
     Settings,
     describe_source_auth,
-    get_expected_grib_filenames,
-    get_refs_dir,
+    make_expected_grib_filenames,
+    make_refs_dir_path,
     require_utc,
 )
 
@@ -76,7 +76,7 @@ def build_indexes_and_refs(
     if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
-    filenames = get_expected_grib_filenames(
+    filenames = make_expected_grib_filenames(
         t_analysis, settings.max_hour, settings.member_id
     )
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
@@ -113,7 +113,7 @@ def build_indexes_and_refs(
         _, src_dir = split_protocol(settings.src_grib_root_uri)
         logger.info(f"No staging path set, indexing directly from {src_dir}")
 
-    refs_dir = get_refs_dir(t_analysis, settings)
+    refs_dir = make_refs_dir_path(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
 
     set_local_eccodes_definitions_path()

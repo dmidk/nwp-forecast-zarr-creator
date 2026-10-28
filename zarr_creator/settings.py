@@ -233,7 +233,7 @@ def make_grib_filename(
     return f"fc{format_analysis_time_for_grib(t_analysis)}+{hour:03d}{member_id}_{file_type}"
 
 
-def get_expected_grib_filenames(
+def make_expected_grib_filenames(
     t_analysis: datetime.datetime,
     max_hour: int,
     member_id: str,
@@ -247,7 +247,7 @@ def get_expected_grib_filenames(
     ]
 
 
-def get_refs_dir(t_analysis: datetime.datetime, settings: Settings) -> str:
+def make_refs_dir_path(t_analysis: datetime.datetime, settings: Settings) -> str:
     """Full refs output directory for one analysis time."""
     return os.path.join(
         settings.refs_root_path,

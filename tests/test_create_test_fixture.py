@@ -15,10 +15,10 @@ def _utc(*args):
 
 
 def _plant_source(uri, t, max_hour=1, member="CONTROL__dmi"):
-    from zarr_creator.settings import get_expected_grib_filenames
+    from zarr_creator.settings import make_expected_grib_filenames
 
     fs, _ = storage.resolve_fs(uri)
-    for name in get_expected_grib_filenames(t, max_hour, member):
+    for name in make_expected_grib_filenames(t, max_hour, member):
         fs.pipe(f"{uri.rstrip('/')}/{name}", b"fake-grib:" + name.encode())
 
 

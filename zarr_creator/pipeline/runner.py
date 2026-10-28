@@ -17,7 +17,7 @@ import time
 from loguru import logger
 
 from .. import storage
-from ..settings import Settings, compute_analysis_time, get_refs_dir, require_utc
+from ..settings import Settings, compute_analysis_time, make_refs_dir_path, require_utc
 from .index_refs import build_indexes_and_refs
 
 DEFAULT_POLL_INTERVAL = 300
@@ -37,7 +37,7 @@ def is_refs_done(t_analysis: datetime.datetime, settings: Settings) -> bool:
     built, so it also exists after an interrupted or failed run.
     """
     return os.path.isfile(
-        os.path.join(get_refs_dir(t_analysis, settings), REFS_DONE_MARKER)
+        os.path.join(make_refs_dir_path(t_analysis, settings), REFS_DONE_MARKER)
     )
 
 
@@ -49,7 +49,7 @@ def mark_refs_done(
     By default the refs are freed, keeping only the marker; ``keep_refs=True``
     leaves them in place (e.g. to inspect them during development).
     """
-    refs_dir = get_refs_dir(t_analysis, settings)
+    refs_dir = make_refs_dir_path(t_analysis, settings)
     if not keep_refs:
         shutil.rmtree(refs_dir, ignore_errors=True)
     os.makedirs(refs_dir, exist_ok=True)
