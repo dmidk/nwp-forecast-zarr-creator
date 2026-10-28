@@ -125,10 +125,14 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
                     else:
                         new_name = level_name_mapping.format(var_name=var_name)
                     ds_part[new_name] = da
+                    if "level" in da.dims:
+                        level_types_with_level_dim.add(level_type)
                 elif level_name_mapping is None:
                     # assuming we're just selecting levels and not changing the name
                     da = da.sel(level=levels)
                     ds_part[var_name] = da
+                    if "level" in da.dims:
+                        level_types_with_level_dim.add(level_type)
                 else:
                     # mapping each level to a new variable name
                     for level in levels:
@@ -138,8 +142,6 @@ def convert(t_analysis: datetime.datetime, settings: Settings) -> None:
                         )
                         ds_part[new_name] = da_level
 
-                if "level" in da.dims:
-                    level_types_with_level_dim.add(level_type)
                 if "grid_mapping" in da.attrs:
                     ds_part[da.attrs["grid_mapping"]] = ds_level_type[
                         da.attrs["grid_mapping"]
