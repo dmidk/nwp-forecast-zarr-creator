@@ -44,7 +44,7 @@ from .settings import (
     FILE_TYPES,
     compute_analysis_time,
     describe_source_auth,
-    get_expected_grib_filenames,
+    make_expected_grib_filenames,
     make_refs_dir_name,
     require_utc,
 )
@@ -87,7 +87,7 @@ def is_complete(
     anon: bool = False,
 ) -> bool:
     """Check that all expected GRIB files exist for one analysis time."""
-    names = get_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
+    names = make_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
     return not storage.find_missing(source_uri, names, profile, anon)
 
 
@@ -298,7 +298,7 @@ def create_test_fixture(
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
-    names = get_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
+    names = make_expected_grib_filenames(t_analysis, max_hour, member_id, file_types)
     src_urls = [storage.join(source_uri, name) for name in names]
 
     if dest_dir is not None:
