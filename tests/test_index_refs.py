@@ -66,19 +66,30 @@ def test_indexes_in_place_no_staging(tmp_path, monkeypatch):
     settings = _settings(
         src_grib_root_uri=str(src), refs_root_path=str(tmp_path / "refs")
     )
+    # Calls to the gribscan steps, in order, so the test can check which files
+    # were indexed and how the refs were built.
     calls = []
+    # `_run_index` runs `gribscan-index` on the GRIB files, which can't parse
+    # the fake files written by `_touch_files`. Record the input paths
+    # instead: with no staging they must be the source files themselves.
     monkeypatch.setattr(
         index_refs,
         "_run_index",
-        lambda inputs, nprocs=2: calls.append(("index", inputs)),
+        lambda inputs, nprocs=2, outdir=None: calls.append(("index", inputs)),
     )
+    # `_run_build_refs` reads the `.index` files that `_run_index` would have
+    # written (they don't exist here) and writes the refs JSONs. Record its
+    # arguments instead, to check the refs dir and the source path prefix.
     monkeypatch.setattr(
         index_refs,
         "_run_build_refs",
-        lambda indexes, refs_dir, prefix: calls.append(
+        lambda indexes, refs_dir, prefix, magician: calls.append(
             ("build", indexes, refs_dir, prefix)
         ),
     )
+    # The real function points eccodes at the repo's GRIB definitions, which
+    # changes eccodes state for the whole test process. Nothing is decoded
+    # here, so skip it to keep the test free of side effects.
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
     refs_dir = index_refs.build_indexes_and_refs(t, settings)
     assert refs_dir == str(
@@ -116,7 +127,9 @@ def test_staging_used_when_set(tmp_path, monkeypatch):
         return tmpdir
 
     monkeypatch.setattr(index_refs.storage, "download_to_temp", fake_stage)
-    monkeypatch.setattr(index_refs, "_run_index", lambda inputs, nprocs=2: None)
+    monkeypatch.setattr(
+        index_refs, "_run_index", lambda inputs, nprocs=2, outdir=None: None
+    )
     monkeypatch.setattr(index_refs, "_run_build_refs", lambda *a, **k: None)
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
     # local file:// URLs: storage.join on a plain path returns plain path
@@ -129,7 +142,9 @@ def test_non_local_source_without_staging_raises(monkeypatch):
     monkeypatch.setattr(index_refs.storage, "find_missing", lambda *a, **k: [])
     indexed = []
     monkeypatch.setattr(
-        index_refs, "_run_index", lambda inputs, nprocs=2: indexed.extend(inputs)
+        index_refs,
+        "_run_index",
+        lambda inputs, nprocs=2, outdir=None: indexed.extend(inputs),
     )
     with pytest.raises(ValueError, match="SRC_GRIB_TEMP_PATH must be set"):
         index_refs.build_indexes_and_refs(_utc(2025, 3, 2, 6), settings)
@@ -146,12 +161,14 @@ def test_file_url_source_indexed_in_place_as_plain_path(tmp_path, monkeypatch):
     )
     calls = []
     monkeypatch.setattr(
-        index_refs, "_run_index", lambda inputs, nprocs=2: calls.append(inputs)
+        index_refs,
+        "_run_index",
+        lambda inputs, nprocs=2, outdir=None: calls.append(inputs),
     )
     monkeypatch.setattr(
         index_refs,
         "_run_build_refs",
-        lambda indexes, refs_dir, prefix: calls.append(prefix),
+        lambda indexes, refs_dir, prefix, magician: calls.append(prefix),
     )
     monkeypatch.setattr(index_refs, "set_local_eccodes_definitions_path", lambda: None)
     index_refs.build_indexes_and_refs(t, settings)
@@ -168,8 +185,11 @@ def test_t_analysis_cli_arg_default_and_errors():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--t-analysis", type=parse_t_analysis_arg, default=s.LATEST)
-    # default is resolved to a real UTC datetime on the 3-hour grid
-    t = parser.parse_args([]).t_analysis
+    # "latest" is kept as a sentinel (it depends on the suite) and resolves to
+    # a real UTC datetime on the suite's cycle grid
+    assert parser.parse_args([]).t_analysis == s.LATEST
+    assert parser.parse_args(["--t-analysis", "LATEST"]).t_analysis == s.LATEST
+    t = s.resolve_t_analysis_for_suite(parser.parse_args([]).t_analysis, "dini")
     assert t.tzinfo is not None and t.hour % 3 == 0 and t.minute == 0
     assert parser.parse_args(["--t-analysis", "2025-03-02T06:00:00Z"]).t_analysis == (
         s.resolve_t_analysis("2025-03-02T06:00:00Z")

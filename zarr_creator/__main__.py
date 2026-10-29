@@ -23,7 +23,12 @@ from .pipeline.cli_args import (
     apply_args_to_settings,
     parse_t_analysis_arg,
 )
-from .settings import LATEST, Settings, describe_source_auth, resolve_t_analysis
+from .settings import (
+    LATEST,
+    Settings,
+    describe_source_auth,
+    resolve_t_analysis_for_suite,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -37,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
     add_settings_arguments(common)
 
     parser = argparse.ArgumentParser(
-        description="Convert Harmonie GRIB forecasts to zarr datasets"
+        description="Convert NWP GRIB forecasts (HARMONIE, IFS) to zarr datasets"
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -160,7 +165,7 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
         return
 
     runner.process_one(
-        args.t_analysis or resolve_t_analysis(LATEST),
+        resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name),
         settings,
         max_retries=args.max_retries,
         retry_interval=args.retry_interval,
@@ -180,11 +185,15 @@ def cli(argv=None) -> None:
 
     if args.command == "run":
         _run(args, settings)
-    elif args.command == "index":
-        refs_dir = index_refs.build_indexes_and_refs(args.t_analysis, settings)
+        return
+
+    # "latest" depends on the suite's cycle, so resolve it once settings are known
+    t_analysis = resolve_t_analysis_for_suite(args.t_analysis, settings.suite_name)
+    if args.command == "index":
+        refs_dir = index_refs.build_indexes_and_refs(t_analysis, settings)
         logger.info(f"Refs written to {refs_dir}")
     else:
-        convert(args.t_analysis, settings)
+        convert(t_analysis, settings)
 
 
 if __name__ == "__main__":

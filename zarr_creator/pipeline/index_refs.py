@@ -1,19 +1,22 @@
 """Build GRIB indexes and gribscan refs (port of ``build_indexes_and_refs.sh``).
 
-Flow per analysis time, for each of the ``sf``/``pl`` file types:
+Flow per analysis time, for each file group of the suite (``sf``/``pl`` for
+HARMONIE, see ``zarr_creator.suites``):
 
-1. Enumerate expected files ``fc<YYYYMMDDHH>+<HHH><member>_<type>`` for
-   ``0..MAX_HOUR`` and verify completeness (replaces the ``test -f`` loop).
+1. Enumerate the expected files for ``0..MAX_HOUR`` (e.g.
+   ``fc<YYYYMMDDHH>+<HHH><member>_<type>`` for HARMONIE) and verify
+   completeness (replaces the ``test -f`` loop).
 2. If ``SRC_GRIB_TEMP_PATH`` is set, download/copy files there first and
    index the staged copy (replaces ``rsync``); otherwise index in place.
    gribscan only reads plain local paths, so a source on any other
    filesystem (e.g. ``s3://``) requires ``SRC_GRIB_TEMP_PATH``.
 3. Run ``gribscan-index`` in-process (with the local DMI eccodes
-   definitions path set) and ``gribscan-build`` with
-   ``--prefix <src>/ -m harmonie``.
+   definitions path set), then assemble the refs with the suite's gribscan
+   magician (what ``gribscan-build --prefix <src>/ -m <magician>`` does).
 """
 
 import datetime
+import json
 import os
 
 from fsspec.core import split_protocol
@@ -21,33 +24,60 @@ from loguru import logger
 
 from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
-from ..settings import (
-    FILE_TYPES,
-    Settings,
-    describe_source_auth,
-    make_expected_grib_filenames,
-    make_refs_dir_path,
-    require_utc,
-)
+from ..settings import Settings, describe_source_auth, make_refs_dir_path, require_utc
+from ..suites import get_suite
 
 
-def _run_index(inputs: list[str], nprocs: int = 2) -> None:
+def _run_index(inputs: list[str], nprocs: int = 2, outdir: str | None = None) -> None:
+    """Create gribscan ``.index`` files by running ``gribscan-index`` in-process.
+
+    Parameters
+    ----------
+    inputs : list[str]
+        Local paths of the GRIB files to index.
+    nprocs : int, optional
+        Number of processes to index with.
+    outdir : str, optional
+        Directory to write the index files to; by default they are written
+        next to the GRIB files.
+    """
     import gribscan.tools
 
     # -f: always rebuild; the staging dir may be a warm cache containing
     # indexes from a previous run (same fixture content, but rebuild anyway).
-    gribscan.tools.create_index.main(
-        [*inputs, "-n", str(nprocs), "-f"], standalone_mode=False
-    )
+    args = [*inputs, "-n", str(nprocs), "-f"]
+    if outdir is not None:
+        args += ["-o", outdir]
+    gribscan.tools.create_index.main(args, standalone_mode=False)
 
 
-def _run_build_refs(index_files: list[str], refs_dir: str, prefix: str) -> None:
-    import gribscan.tools
+def _run_build_refs(
+    index_files: list[str], refs_dir: str, prefix: str, magician
+) -> None:
+    """Build the refs from index files and write one JSON per dataset.
 
-    gribscan.tools.build_dataset.main(
-        [*index_files, "-o", refs_dir, "--prefix", prefix, "-m", "harmonie"],
-        standalone_mode=False,
-    )
+    Parameters
+    ----------
+    index_files : list[str]
+        Paths of the gribscan ``.index`` files.
+    refs_dir : str
+        Directory to write the refs to (created if missing), one
+        ``<dataset>.json`` per dataset of the magician.
+    prefix : str
+        Global prefix of the GRIB file paths in the refs (the source
+        directory, with a trailing ``/``).
+    magician : gribscan.magician.Magician
+        The gribscan magician that assembles the datasets.
+    """
+    import gribscan
+
+    # In-process equivalent of `gribscan-build`, whose `-m` choice only
+    # accepts gribscan's built-in magicians.
+    refs = gribscan.grib_magic(index_files, magician=magician, global_prefix=prefix)
+    os.makedirs(refs_dir, exist_ok=True)
+    for dataset, ref in refs.items():
+        with open(os.path.join(refs_dir, f"{dataset}.json"), "w") as f:
+            json.dump(ref, f, indent=2)
 
 
 def _download_with_hint(urls, settings, profile, anon) -> str:
@@ -70,15 +100,17 @@ def build_indexes_and_refs(
 ) -> str:
     """Build indexes and refs for one analysis time; return the refs dir."""
     t_analysis = require_utc(t_analysis)
+    suite = get_suite(settings.suite_name)
     profile = settings.src_aws_profile
     anon = settings.src_anon
 
     if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
-    filenames = make_expected_grib_filenames(
+    file_groups = suite.get_grib_file_groups(
         t_analysis, settings.max_hour, settings.member_id
     )
+    filenames = [name for names in file_groups.values() for name in names]
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
     try:
         missing = storage.find_missing(
@@ -118,18 +150,27 @@ def build_indexes_and_refs(
 
     set_local_eccodes_definitions_path()
 
-    by_type: dict[str, list[str]] = {ft: [] for ft in FILE_TYPES}
-    for name in filenames:
-        file_type = name.rsplit("_", 1)[-1]
-        by_type[file_type].append(name)
+    if suite.index_next_to_source:
+        index_dir = None
+    else:
+        index_dir = os.path.join(refs_dir, "index")
+        os.makedirs(index_dir, exist_ok=True)
 
-    for file_type in FILE_TYPES:
+    for group, names in file_groups.items():
         # src_dir is always local here: non-local sources must be staged.
-        inputs = [os.path.join(src_dir, name) for name in by_type[file_type]]
-        logger.info(f"Indexing {file_type} files ({len(inputs)} files)")
-        _run_index(inputs)
-        index_files = [f"{path}.index" for path in inputs]
-        logger.info(f"Building refs for {file_type} files")
-        _run_build_refs(index_files, refs_dir, prefix=src_dir.rstrip("/") + "/")
+        inputs = [os.path.join(src_dir, name) for name in names]
+        logger.info(f"Indexing {group} files ({len(inputs)} files)")
+        _run_index(inputs, outdir=index_dir)
+        if index_dir is None:
+            index_files = [f"{path}.index" for path in inputs]
+        else:
+            index_files = [os.path.join(index_dir, f"{name}.index") for name in names]
+        logger.info(f"Building refs for {group} files")
+        _run_build_refs(
+            index_files,
+            refs_dir,
+            prefix=src_dir.rstrip("/") + "/",
+            magician=suite.make_magician(),
+        )
 
     return refs_dir

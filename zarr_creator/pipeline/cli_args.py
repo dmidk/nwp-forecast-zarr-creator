@@ -7,6 +7,7 @@ explicit flag > env > built-in default (see ``zarr_creator.settings``).
 import argparse
 
 from ..settings import (
+    CLIP_BOUND_NAMES,
     DEFAULT_DST_ZARR_OUTPUT_PATH,
     DEFAULT_MAX_HOUR,
     DEFAULT_MEMBER_ID,
@@ -16,20 +17,30 @@ from ..settings import (
     LATEST,
     SUITE_NAMES,
     Settings,
+    is_latest,
     load_settings,
     resolve_t_analysis,
+    set_suite,
 )
 
 T_ANALYSIS_HELP = (
     "Analysis time as an ISO8601 string with a timezone, e.g. "
     f"2025-03-02T00:00:00Z, or '{LATEST}' for the most recent analysis time "
-    "(now minus ANALYSIS_LAG_HOURS, default 2, floored to a multiple of "
-    "ANALYSIS_INTERVAL_HOURS, default 3)"
+    "of the suite (now minus the delivery lag, floored to the cycle interval: "
+    "2h lag and 3h cycles for dini/ig, 7h lag and 6h cycles for ifs; "
+    "ANALYSIS_LAG_HOURS / ANALYSIS_INTERVAL_HOURS override both)"
 )
 
 
 def parse_t_analysis_arg(value: str):
-    """``argparse`` type for ``--t-analysis``: ISO8601 string or ``latest``."""
+    """``argparse`` type for ``--t-analysis``: ISO8601 string or ``latest``.
+
+    ``latest`` is returned as the string :data:`LATEST`, since what it
+    resolves to depends on the suite; resolve it with
+    :func:`zarr_creator.settings.resolve_t_analysis_for_suite`.
+    """
+    if is_latest(value):
+        return LATEST
     try:
         return resolve_t_analysis(value)
     except ValueError as exc:
@@ -57,7 +68,7 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
         "--member-id",
         default=None,
         help=f"Ensemble member id in the GRIB file names (env: MEMBER_ID, "
-        f"default: {DEFAULT_MEMBER_ID})",
+        f"default: {DEFAULT_MEMBER_ID}, or 'control' for ifs)",
     )
     parser.add_argument(
         "--max-hour",
@@ -106,6 +117,20 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
         help="Read the source from S3 unsigned, for public buckets "
         "(env: SRC_ANON=1). Never used for writes",
     )
+    for name, description in (
+        ("lat_min", "Clip the output to latitudes >= this (degrees north)"),
+        ("lat_max", "Clip the output to latitudes <= this (degrees north)"),
+        ("lon_min", "Clip the output to longitudes >= this (degrees east, -180..180)"),
+        ("lon_max", "Clip the output to longitudes <= this (degrees east, -180..180)"),
+    ):
+        parser.add_argument(
+            f"--clip-{name.replace('_', '-')}",
+            type=float,
+            default=None,
+            help=f"{description}, keeping one extra grid point beyond it. Only for "
+            f"suites on a lat/lon grid (ifs) "
+            f"(env: CLIP_{name.upper()}, default: no clipping)",
+        )
 
 
 def apply_args_to_settings(
@@ -113,16 +138,18 @@ def apply_args_to_settings(
 ) -> Settings:
     """Apply explicit CLI flags over env-loaded settings (in place)."""
     settings = base or load_settings()
+    if args.suite_name is not None:
+        set_suite(settings, args.suite_name)
     if args.src_grib_root_uri is not None:
         settings.src_grib_root_uri = args.src_grib_root_uri
     if args.refs_root_path is not None:
         settings.refs_root_path = args.refs_root_path
     if args.member_id is not None:
         settings.member_id = args.member_id
+        settings._member_id_is_default = False
     if args.max_hour is not None:
         settings.max_hour = args.max_hour
-    if args.suite_name is not None:
-        settings.suite_name = args.suite_name
+        settings._max_hour_is_default = False
     if args.src_grib_temp_path is not None:
         # Empty string disables staging (same as unset env var).
         settings.src_grib_temp_path = args.src_grib_temp_path or None
@@ -134,4 +161,10 @@ def apply_args_to_settings(
         settings.dst_aws_profile = args.dest_profile
     if args.src_anon:
         settings.src_anon = True
+    for name in CLIP_BOUND_NAMES:
+        value = getattr(args, f"clip_{name}", None)
+        if value is not None:
+            setattr(settings, f"clip_{name}", value)
+    # fail on bad clip bounds now rather than after indexing
+    settings.get_clip_bounds()
     return settings

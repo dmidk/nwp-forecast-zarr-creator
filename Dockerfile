@@ -14,7 +14,8 @@ ENV REFS_ROOT_PATH="/app/refs"
 ENV SRC_GRIB_TEMP_PATH="/tmp/nwp-forecast-zarr-creator"
 ENV DST_ZARR_OUTPUT_PATH="s3://harmonie-zarr/{suite_name}/{member}/{t_analysis}/{dataset_id}.zarr"
 RUN uv venv -p 3.12
-RUN uv sync
+# clean the uv cache in the same layer so it isn't stored in the image (~1 GB)
+RUN uv sync && uv cache clean
 
 # Check that version is set correctly from git (i.e. not the default "0.0.0")
 RUN uv run python -c "import zarr_creator; assert zarr_creator.__version__ != '0.0.0'"

@@ -15,7 +15,7 @@ name.
 import datetime
 import os
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import isodate
 
@@ -26,10 +26,13 @@ DEFAULT_MEMBER_ID = "CONTROL__dmi"
 DEFAULT_MAX_HOUR = 36
 DEFAULT_SUITE_NAME = "dini"
 # Lowercase only; the name also fills {suite_name} in output paths.
-SUITE_NAMES = ("dini", "ig")
+SUITE_NAMES = ("dini", "ig", "ifs")
 DEFAULT_DST_ZARR_OUTPUT_PATH = "file:///tmp/{suite_name}-recent/{dataset_id}.zarr"
 
 FILE_TYPES = ("sf", "pl")
+
+# Settings.clip_<name> / env CLIP_<NAME> / --clip-<name>
+CLIP_BOUND_NAMES = ("lat_min", "lat_max", "lon_min", "lon_max")
 
 
 def _getenv(name: str, default: str | None = None) -> str | None:
@@ -55,6 +58,16 @@ class Settings:
     dst_aws_profile: str | None = None
     # Unsigned S3 reads (public CI fixture bucket). Never used for writes.
     src_anon: bool = False
+    # Optional lat/lon box (degrees, inclusive) to clip the output to; unset
+    # sides are unbounded. Only suites on a lat/lon grid support it.
+    clip_lat_min: float | None = None
+    clip_lat_max: float | None = None
+    clip_lon_min: float | None = None
+    clip_lon_max: float | None = None
+    # Whether max_hour/member_id are the suite's defaults (not set via env or
+    # flag), so that switching suite also switches them.
+    _max_hour_is_default: bool = field(default=False, repr=False)
+    _member_id_is_default: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
         # Checked here rather than in each CLI so that code passing its own
@@ -65,6 +78,93 @@ class Settings:
                 f"SUITE_NAME must be one of {', '.join(SUITE_NAMES)}, "
                 f"got: {self.suite_name!r}"
             )
+
+    def get_clip_bounds(self) -> dict[str, float]:
+        """The clip bounds that are set, validated against each other and the suite.
+
+        Called before indexing (CLI and runner), so that bad bounds fail
+        before the conversion retry loop would retry them forever.
+
+        Returns
+        -------
+        dict[str, float]
+            The set bounds, keyed by ``lat_min``, ``lat_max``, ``lon_min``
+            and ``lon_max``; empty if none are set.
+
+        Raises
+        ------
+        ValueError
+            If a bound is outside -90..90 (latitude) or -180..180
+            (longitude), a minimum is larger than its maximum, or bounds are
+            set for a suite that doesn't support clipping.
+        """
+        bounds = {
+            name: value
+            for name in CLIP_BOUND_NAMES
+            if (value := getattr(self, f"clip_{name}")) is not None
+        }
+        if not bounds:
+            return bounds
+        for axis, limit in (("lat", 90.0), ("lon", 180.0)):
+            for side in ("min", "max"):
+                value = bounds.get(f"{axis}_{side}")
+                if value is not None and not -limit <= value <= limit:
+                    raise ValueError(
+                        f"CLIP_{axis.upper()}_{side.upper()} must be within "
+                        f"-{limit:g}..{limit:g}, got: {value}"
+                    )
+            vmin, vmax = bounds.get(f"{axis}_min"), bounds.get(f"{axis}_max")
+            if vmin is not None and vmax is not None and vmin > vmax:
+                raise ValueError(
+                    f"CLIP_{axis.upper()}_MIN ({vmin}) must not be larger than "
+                    f"CLIP_{axis.upper()}_MAX ({vmax})"
+                )
+
+        from .suites import get_suite
+
+        if get_suite(self.suite_name).clip_to_bounds is None:
+            supported = [
+                n for n in SUITE_NAMES if get_suite(n).clip_to_bounds is not None
+            ]
+            raise ValueError(
+                f"Clipping (CLIP_* / --clip-*) is only supported for the "
+                f"{', '.join(supported)} suite(s), not {self.suite_name!r}"
+            )
+        return bounds
+
+
+def set_suite(settings: Settings, suite_name: str) -> Settings:
+    """Switch suite (in place), applying its defaults for unset options.
+
+    ``max_hour`` and ``member_id`` are set to the suite's defaults unless
+    they were set explicitly (env or flag).
+
+    Parameters
+    ----------
+    settings : Settings
+        Settings to update in place.
+    suite_name : str
+        Name of the suite to switch to.
+
+    Returns
+    -------
+    Settings
+        ``settings`` itself.
+
+    Raises
+    ------
+    ValueError
+        If ``suite_name`` is not a supported suite.
+    """
+    from .suites import get_suite
+
+    suite = get_suite(suite_name)
+    settings.suite_name = suite_name
+    if settings._max_hour_is_default:
+        settings.max_hour = suite.default_max_hour
+    if settings._member_id_is_default:
+        settings.member_id = suite.default_member_id
+    return settings
 
 
 def _resolve_src_root() -> str:
@@ -94,7 +194,20 @@ def load_settings() -> Settings:
     if max_hour < 0:
         raise ValueError(f"MAX_HOUR must be >= 0, got: {max_hour}")
 
-    return Settings(
+    clip = {}
+    for name in CLIP_BOUND_NAMES:
+        env_name = f"CLIP_{name.upper()}"
+        raw = _getenv(env_name)
+        if raw is None:
+            continue
+        try:
+            clip[f"clip_{name}"] = float(raw)
+        except ValueError as exc:
+            raise ValueError(
+                f"{env_name} must be a number (degrees), got: {raw!r}"
+            ) from exc
+
+    settings = Settings(
         src_grib_root_uri=src_root,
         refs_root_path=_getenv("REFS_ROOT_PATH", DEFAULT_REFS_ROOT_PATH),  # type: ignore[arg-type]
         member_id=_getenv("MEMBER_ID", DEFAULT_MEMBER_ID),  # type: ignore[arg-type]
@@ -111,7 +224,11 @@ def load_settings() -> Settings:
         or os.environ.get("AWS_PROFILE")
         or None,
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
+        **clip,
+        _max_hour_is_default=_getenv("MAX_HOUR") is None,
+        _member_id_is_default=_getenv("MEMBER_ID") is None,
     )
+    return set_suite(settings, settings.suite_name)
 
 
 def describe_source_auth(anon: bool, profile: str | None) -> str:
@@ -138,12 +255,29 @@ DEFAULT_ANALYSIS_LAG_HOURS = 2
 LATEST = "latest"
 
 
-def get_analysis_interval_in_hours() -> int:
+def get_analysis_interval_in_hours(
+    default: int = DEFAULT_ANALYSIS_INTERVAL_HOURS,
+) -> int:
     """Hours between analysis times (env: ``ANALYSIS_INTERVAL_HOURS``).
 
     Must divide 24 so the analysis times fall on the same hours every day.
+
+    Parameters
+    ----------
+    default : int, optional
+        Interval used when ``ANALYSIS_INTERVAL_HOURS`` is unset or empty.
+
+    Returns
+    -------
+    int
+        Hours between analysis times.
+
+    Raises
+    ------
+    ValueError
+        If the value is not an integer or doesn't divide 24.
     """
-    raw = _getenv("ANALYSIS_INTERVAL_HOURS", str(DEFAULT_ANALYSIS_INTERVAL_HOURS))
+    raw = _getenv("ANALYSIS_INTERVAL_HOURS", str(default))
     try:
         hours = int(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError) as exc:
@@ -158,9 +292,25 @@ def get_analysis_interval_in_hours() -> int:
     return hours
 
 
-def get_analysis_lag_in_hours() -> float:
-    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``)."""
-    raw = _getenv("ANALYSIS_LAG_HOURS", str(DEFAULT_ANALYSIS_LAG_HOURS))
+def get_analysis_lag_in_hours(default: float = DEFAULT_ANALYSIS_LAG_HOURS) -> float:
+    """Hours to allow for data delivery (env: ``ANALYSIS_LAG_HOURS``).
+
+    Parameters
+    ----------
+    default : float, optional
+        Lag used when ``ANALYSIS_LAG_HOURS`` is unset or empty.
+
+    Returns
+    -------
+    float
+        Delivery lag in hours.
+
+    Raises
+    ------
+    ValueError
+        If the value is not a number or is negative.
+    """
+    raw = _getenv("ANALYSIS_LAG_HOURS", str(default))
     try:
         hours = float(raw)  # type: ignore[arg-type]
     except (TypeError, ValueError) as exc:
@@ -195,20 +345,89 @@ def compute_analysis_time(
     return datetime.datetime.fromtimestamp(rounded, tz=datetime.timezone.utc)
 
 
+def is_latest(value) -> bool:
+    """Whether a ``--t-analysis`` value means the latest analysis time.
+
+    Parameters
+    ----------
+    value : str or datetime.datetime or None
+        The value to check.
+
+    Returns
+    -------
+    bool
+        True for ``None`` or ``"latest"`` (case and surrounding whitespace
+        ignored).
+    """
+    return value is None or (isinstance(value, str) and value.strip().lower() == LATEST)
+
+
 def resolve_t_analysis(
-    value: str | None, now: datetime.datetime | None = None
+    value: str | datetime.datetime | None,
+    now: datetime.datetime | None = None,
+    lag_hours: float | None = None,
+    interval_hours: int | None = None,
 ) -> datetime.datetime:
     """Turn a ``--t-analysis`` value into a UTC datetime.
 
     ``None`` or ``"latest"`` means the most recent analysis time (see
-    :func:`compute_analysis_time`); anything else is an ISO8601 string with a
-    timezone, e.g. ``2025-03-02T00:00:00Z``.
+    :func:`compute_analysis_time`); a datetime is validated and passed
+    through; anything else is an ISO8601 string with a timezone, e.g.
+    ``2025-03-02T00:00:00Z``.
     """
-    if value is None or value.strip().lower() == LATEST:
+    if is_latest(value):
         return compute_analysis_time(
-            now or datetime.datetime.now(datetime.timezone.utc)
+            now or datetime.datetime.now(datetime.timezone.utc),
+            lag_hours=lag_hours,
+            interval_hours=interval_hours,
         )
+    if isinstance(value, datetime.datetime):
+        return require_utc(value)
     return require_utc(isodate.parse_datetime(value))
+
+
+def resolve_t_analysis_for_suite(
+    value: str | datetime.datetime | None,
+    suite_name: str,
+    now: datetime.datetime | None = None,
+) -> datetime.datetime:
+    """:func:`resolve_t_analysis` using the suite's cycle interval and lag.
+
+    ``ANALYSIS_LAG_HOURS`` / ``ANALYSIS_INTERVAL_HOURS`` override the suite's
+    values when set.
+
+    Parameters
+    ----------
+    value : str or datetime.datetime or None
+        ``None`` or ``"latest"`` for the most recent analysis time, else a
+        timezone-aware datetime or ISO8601 string.
+    suite_name : str
+        Name of the suite whose cycle interval and lag to use.
+    now : datetime.datetime, optional
+        Current time; defaults to now (UTC).
+
+    Returns
+    -------
+    datetime.datetime
+        The analysis time in UTC.
+
+    Raises
+    ------
+    ValueError
+        If the suite is unknown, the time is not timezone-aware, or the
+        interval/lag environment variables are invalid.
+    """
+    from .suites import get_suite
+
+    suite = get_suite(suite_name)
+    return resolve_t_analysis(
+        value,
+        now=now,
+        lag_hours=get_analysis_lag_in_hours(default=suite.lag_hours),
+        interval_hours=get_analysis_interval_in_hours(
+            default=suite.analysis_interval_hours
+        ),
+    )
 
 
 def format_analysis_time_for_grib(t_analysis: datetime.datetime) -> str:

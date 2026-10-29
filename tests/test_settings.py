@@ -139,6 +139,62 @@ def test_profile_cli_flags_override_env(monkeypatch):
     assert cfg.dst_aws_profile == "cli-dst"
 
 
+def _clear_clip_env(monkeypatch):
+    """
+    Unset all ``CLIP_*`` environment variables for the current test.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest monkeypatch fixture used to remove the variables.
+    """
+    for name in s.CLIP_BOUND_NAMES:
+        monkeypatch.delenv(f"CLIP_{name.upper()}", raising=False)
+
+
+def test_clip_bounds_from_env_and_flags(monkeypatch):
+    """Check clip bounds are read from env and that CLI flags override them."""
+    import argparse
+
+    from zarr_creator.pipeline.cli_args import (
+        add_settings_arguments,
+        apply_args_to_settings,
+    )
+
+    _clear_clip_env(monkeypatch)
+    monkeypatch.setenv("SUITE_NAME", "ifs")
+    assert s.load_settings().get_clip_bounds() == {}
+
+    monkeypatch.setenv("CLIP_LAT_MIN", "40")
+    monkeypatch.setenv("CLIP_LON_MAX", "39.5")
+    assert s.load_settings().get_clip_bounds() == {"lat_min": 40.0, "lon_max": 39.5}
+
+    parser = argparse.ArgumentParser()
+    add_settings_arguments(parser)
+    args = parser.parse_args(["--clip-lat-min", "41", "--clip-lat-max", "72"])
+    assert apply_args_to_settings(args).get_clip_bounds() == {
+        "lat_min": 41.0,
+        "lat_max": 72.0,
+        "lon_max": 39.5,
+    }
+
+
+def test_clip_bounds_invalid(monkeypatch):
+    """Check invalid, inverted, out-of-range or non-IFS clip bounds raise."""
+    _clear_clip_env(monkeypatch)
+    monkeypatch.setenv("CLIP_LAT_MIN", "north")
+    with pytest.raises(ValueError, match="CLIP_LAT_MIN must be a number"):
+        s.load_settings()
+
+    with pytest.raises(ValueError, match="must not be larger"):
+        s.Settings(suite_name="ifs", clip_lat_min=72, clip_lat_max=40).get_clip_bounds()
+    with pytest.raises(ValueError, match="within -180..180"):
+        s.Settings(suite_name="ifs", clip_lon_min=200).get_clip_bounds()
+    # projected (HARMONIE) grids can't be clipped to a lat/lon box
+    with pytest.raises(ValueError, match="only supported for the ifs suite"):
+        s.Settings(suite_name="dini", clip_lat_min=40).get_clip_bounds()
+
+
 def test_src_anon_parsing(monkeypatch):
     monkeypatch.delenv("SRC_ANON", raising=False)
     assert s.load_settings().src_anon is False

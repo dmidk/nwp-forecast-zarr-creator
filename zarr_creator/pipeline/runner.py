@@ -17,7 +17,13 @@ import time
 from loguru import logger
 
 from .. import storage
-from ..settings import Settings, compute_analysis_time, make_refs_dir_path, require_utc
+from ..settings import (
+    LATEST,
+    Settings,
+    make_refs_dir_path,
+    require_utc,
+    resolve_t_analysis_for_suite,
+)
 from .index_refs import build_indexes_and_refs
 
 DEFAULT_POLL_INTERVAL = 300
@@ -78,6 +84,8 @@ def process_one(
     successful conversion (the done marker is still written).
     """
     t_analysis = require_utc(t_analysis)
+    # bad clip bounds would otherwise only fail in the retried conversion
+    settings.get_clip_bounds()
     if is_refs_done(t_analysis, settings):
         logger.info(f"Analysis time {t_analysis.isoformat()} is already processed")
         return "skipped"
@@ -117,9 +125,7 @@ def poll_once(
     **process_kwargs,
 ) -> float:
     """Run a single watch iteration; return seconds to sleep next."""
-    t_analysis = compute_analysis_time(
-        now or datetime.datetime.now(datetime.timezone.utc)
-    )
+    t_analysis = resolve_t_analysis_for_suite(LATEST, settings.suite_name, now=now)
     try:
         if process_one(t_analysis, settings, **process_kwargs) == "skipped":
             return already_done_sleep
