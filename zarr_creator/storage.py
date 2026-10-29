@@ -23,7 +23,7 @@ from fsspec.utils import get_protocol
 from loguru import logger
 
 
-def _progress_callback(desc: str) -> TqdmCallback:
+def _make_progress_callback(desc: str) -> TqdmCallback:
     """File-count progress callback for fsspec ``get``/``put``.
 
     Suppressed when stderr is not a TTY (e.g. container logs).
@@ -33,7 +33,7 @@ def _progress_callback(desc: str) -> TqdmCallback:
     )
 
 
-def s3_verify_ssl() -> bool:
+def should_verify_s3_ssl() -> bool:
     """Whether to verify S3 TLS certificates (env: ``S3_VERIFY_SSL``).
 
     Defaults to true; set ``S3_VERIFY_SSL=0`` for endpoints whose CA is not
@@ -42,7 +42,9 @@ def s3_verify_ssl() -> bool:
     return os.environ.get("S3_VERIFY_SSL", "").lower() not in {"0", "false", "no"}
 
 
-def storage_options(url: str, profile: str | None = None, anon: bool = False) -> dict:
+def get_storage_options(
+    url: str, profile: str | None = None, anon: bool = False
+) -> dict:
     """fsspec filesystem kwargs for ``url``.
 
     ``profile``/``anon`` are only forwarded for ``s3://`` URLs. ``anon``
@@ -54,7 +56,7 @@ def storage_options(url: str, profile: str | None = None, anon: bool = False) ->
         kwargs: dict = {"anon": anon}
         if profile is not None:
             kwargs["profile"] = profile
-        if not s3_verify_ssl():
+        if not should_verify_s3_ssl():
             kwargs["client_kwargs"] = {"verify": False}
         return kwargs
     return {"auto_mkdir": True}
@@ -62,7 +64,7 @@ def storage_options(url: str, profile: str | None = None, anon: bool = False) ->
 
 def resolve_fs(url: str, profile: str | None = None, anon: bool = False):
     """Resolve ``(filesystem, path)`` for any URL via fsspec."""
-    return fsspec.url_to_fs(url, **storage_options(url, profile, anon))
+    return fsspec.url_to_fs(url, **get_storage_options(url, profile, anon))
 
 
 def is_local_uri(uri: str) -> bool:
@@ -175,7 +177,7 @@ def download_to_temp(
         return tmpdir
     # A single call lets s3fs fetch the files concurrently.
     try:
-        with _progress_callback(f"Downloading to {tmpdir}") as callback:
+        with _make_progress_callback(f"Downloading to {tmpdir}") as callback:
             fs.get(
                 [src for src, _ in todo],
                 [dst + ".part" for _, dst in todo],
@@ -214,7 +216,7 @@ def upload_tree(
         # Object stores need no directories, and s3fs' makedirs would try to
         # create the bucket if it can't see it.
         fs.makedirs(dest_path, exist_ok=True)
-    with _progress_callback(f"Uploading to {dest_root_uri}") as callback:
+    with _make_progress_callback(f"Uploading to {dest_root_uri}") as callback:
         fs.put(
             [os.path.join(local_dir, name) for name in names],
             dst_paths,
@@ -247,7 +249,7 @@ def _is_auth_error(exc: BaseException | None) -> bool:
     return False
 
 
-def auth_error_hint(exc: Exception, *, anon: bool) -> str | None:
+def get_auth_error_hint(exc: Exception, *, anon: bool) -> str | None:
     """Remediation guidance if ``exc`` is an S3 auth failure.
 
     Returns None for non-auth errors. Catches the classic 403 confusion in

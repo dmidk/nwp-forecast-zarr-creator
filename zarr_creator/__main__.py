@@ -20,8 +20,8 @@ from .pipeline import index_refs, runner
 from .pipeline.cli_args import (
     T_ANALYSIS_HELP,
     add_settings_arguments,
-    settings_from_args,
-    t_analysis_arg,
+    apply_args_to_settings,
+    parse_t_analysis_arg,
 )
 from .settings import LATEST, Settings, describe_source_auth, resolve_t_analysis
 
@@ -53,7 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
     mode = run_parser.add_mutually_exclusive_group()
     mode.add_argument(
         "--t-analysis",
-        type=t_analysis_arg,
+        type=parse_t_analysis_arg,
         default=None,
         help="Process this analysis time once and exit. "
         + T_ANALYSIS_HELP
@@ -107,7 +107,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     index_parser.add_argument(
         "--t-analysis",
-        type=t_analysis_arg,
+        type=parse_t_analysis_arg,
         default=LATEST,
         help=T_ANALYSIS_HELP + " (default: %(default)s)",
     )
@@ -122,7 +122,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--t-analysis",
         "--t_analysis",
         dest="t_analysis",
-        type=t_analysis_arg,
+        type=parse_t_analysis_arg,
         default=LATEST,
         help=T_ANALYSIS_HELP + " (default: %(default)s)",
     )
@@ -145,7 +145,7 @@ def _run(args: argparse.Namespace, settings: Settings) -> None:
             f"S3 source auth: "
             f"{describe_source_auth(settings.src_anon, settings.src_aws_profile)}"
         )
-    if not storage.s3_verify_ssl():
+    if not storage.should_verify_s3_ssl():
         logger.warning("S3_VERIFY_SSL is off: S3 TLS certificates are not verified")
 
     if args.watch:
@@ -176,7 +176,7 @@ def cli(argv=None) -> None:
     logger.remove()
     logger.add(sys.stderr, level=args.log_level.upper())
 
-    settings = settings_from_args(args)
+    settings = apply_args_to_settings(args)
 
     if args.command == "run":
         _run(args, settings)

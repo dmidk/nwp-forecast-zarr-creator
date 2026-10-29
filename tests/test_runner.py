@@ -58,13 +58,13 @@ def _mark_done(tmp_path):
 def test_refs_done_needs_marker_not_just_directory(tmp_path):
     settings = _settings(refs_root_path=str(tmp_path))
     t = _utc(2025, 3, 2, 6)
-    assert not runner.refs_done(t, settings)
+    assert not runner.is_refs_done(t, settings)
     # a directory (e.g. from an interrupted run) does not count as done
     os.makedirs(_refs_dir(tmp_path))
     (_refs_dir(tmp_path) / "heightAboveGround.json").write_text("{}")
-    assert not runner.refs_done(t, settings)
+    assert not runner.is_refs_done(t, settings)
     _mark_done(tmp_path)
-    assert runner.refs_done(t, settings)
+    assert runner.is_refs_done(t, settings)
 
 
 def test_mark_refs_done_frees_refs_and_keeps_marker(tmp_path):
@@ -151,7 +151,7 @@ def test_process_one_no_cleanup_keeps_refs_and_staged_files(tmp_path, monkeypatc
         "heightAboveGround.json",
     ]
     assert (stage / "fc2025030206+000CONTROL__dmi_sf").exists()
-    assert runner.refs_done(t, settings)
+    assert runner.is_refs_done(t, settings)
 
 
 def test_run_cli_passes_no_cleanup(tmp_path, monkeypatch):
@@ -182,7 +182,7 @@ def test_process_one_keeps_refs_when_conversion_fails(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError):
         runner.process_one(t, settings, max_retries=0, retry_interval=0)
     assert os.listdir(_refs_dir(tmp_path)) == ["heightAboveGround.json"]
-    assert not runner.refs_done(t, settings)
+    assert not runner.is_refs_done(t, settings)
 
 
 def test_process_one_retries_then_succeeds(tmp_path, monkeypatch):

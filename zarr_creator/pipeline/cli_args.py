@@ -28,7 +28,7 @@ T_ANALYSIS_HELP = (
 )
 
 
-def t_analysis_arg(value: str):
+def parse_t_analysis_arg(value: str):
     """``argparse`` type for ``--t-analysis``: ISO8601 string or ``latest``."""
     try:
         return resolve_t_analysis(value)
@@ -108,7 +108,7 @@ def add_settings_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def settings_from_args(
+def apply_args_to_settings(
     args: argparse.Namespace, base: Settings | None = None
 ) -> Settings:
     """Apply explicit CLI flags over env-loaded settings (in place)."""

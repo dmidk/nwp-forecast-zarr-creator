@@ -119,7 +119,7 @@ def test_profile_cli_flags_override_env(monkeypatch):
 
     from zarr_creator.pipeline.cli_args import (
         add_settings_arguments,
-        settings_from_args,
+        apply_args_to_settings,
     )
 
     monkeypatch.setenv("SRC_AWS_PROFILE", "src")
@@ -127,14 +127,14 @@ def test_profile_cli_flags_override_env(monkeypatch):
     parser = argparse.ArgumentParser()
     add_settings_arguments(parser)
 
-    cfg = settings_from_args(parser.parse_args([]))
+    cfg = apply_args_to_settings(parser.parse_args([]))
     assert cfg.src_aws_profile == "src"
     assert cfg.dst_aws_profile == "dst"
 
     args = parser.parse_args(
         ["--source-profile", "cli-src", "--dest-profile", "cli-dst"]
     )
-    cfg = settings_from_args(args)
+    cfg = apply_args_to_settings(args)
     assert cfg.src_aws_profile == "cli-src"
     assert cfg.dst_aws_profile == "cli-dst"
 
@@ -158,19 +158,20 @@ def test_describe_source_auth():
 
 def test_time_helpers():
     t = _utc(2025, 3, 2, 6)
-    assert s.analysis_time_str(t) == "2025030206"
-    assert s.refs_dir_name(t) == "2025-03-02T0600Z"
+    assert s.format_analysis_time_for_grib(t) == "2025030206"
+    assert s.make_refs_dir_name(t) == "2025-03-02T0600Z"
     assert (
-        s.grib_filename(t, 4, "CONTROL__dmi", "sf") == "fc2025030206+004CONTROL__dmi_sf"
+        s.make_grib_filename(t, 4, "CONTROL__dmi", "sf")
+        == "fc2025030206+004CONTROL__dmi_sf"
     )
-    names = s.expected_grib_filenames(t, 1, "CONTROL__dmi")
+    names = s.make_expected_grib_filenames(t, 1, "CONTROL__dmi")
     assert len(names) == 4  # 2 hours x sf/pl
     assert names[0] == "fc2025030206+000CONTROL__dmi_sf"
 
 
 def test_require_utc_rejects_naive():
     with pytest.raises(ValueError, match="timezone-aware"):
-        s.analysis_time_str(datetime.datetime(2025, 3, 2, 6))
+        s.format_analysis_time_for_grib(datetime.datetime(2025, 3, 2, 6))
 
 
 def test_output_format():

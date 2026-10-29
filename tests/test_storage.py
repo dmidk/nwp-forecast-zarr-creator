@@ -28,7 +28,7 @@ def test_s3_verify_ssl_env(monkeypatch, value, verify):
         monkeypatch.delenv("S3_VERIFY_SSL", raising=False)
     else:
         monkeypatch.setenv("S3_VERIFY_SSL", value)
-    assert storage.s3_verify_ssl() is verify
+    assert storage.should_verify_s3_ssl() is verify
     fs, _ = storage.resolve_fs("s3://bucket/key", anon=True)
     assert fs.client_kwargs.get("verify", True) is verify
 
@@ -246,14 +246,14 @@ def _forbidden():
 
 
 def test_auth_error_hint_anon_points_to_signing():
-    hint = storage.auth_error_hint(_forbidden(), anon=True)
+    hint = storage.get_auth_error_hint(_forbidden(), anon=True)
     assert hint is not None
     assert "SRC_ANON" in hint
     assert "SRC_AWS_PROFILE" in hint
 
 
 def test_auth_error_hint_signed_points_to_anon():
-    hint = storage.auth_error_hint(_forbidden(), anon=False)
+    hint = storage.get_auth_error_hint(_forbidden(), anon=False)
     assert hint is not None
     assert "SRC_ANON=1" in hint
 
@@ -261,23 +261,23 @@ def test_auth_error_hint_signed_points_to_anon():
 def test_auth_error_hint_detects_missing_and_chained_credentials_errors():
     from botocore.exceptions import NoCredentialsError
 
-    assert storage.auth_error_hint(NoCredentialsError(), anon=False) is not None
+    assert storage.get_auth_error_hint(NoCredentialsError(), anon=False) is not None
     try:
         try:
             raise _forbidden()
         except PermissionError as exc:
             raise RuntimeError("listing failed") from exc
     except RuntimeError as wrapped:
-        assert storage.auth_error_hint(wrapped, anon=False) is not None
+        assert storage.get_auth_error_hint(wrapped, anon=False) is not None
 
 
 def test_auth_error_hint_ignores_non_auth_errors():
-    assert storage.auth_error_hint(RuntimeError("boom"), anon=True) is None
-    assert storage.auth_error_hint(RuntimeError("boom"), anon=False) is None
-    assert storage.auth_error_hint(FileNotFoundError("missing"), anon=True) is None
+    assert storage.get_auth_error_hint(RuntimeError("boom"), anon=True) is None
+    assert storage.get_auth_error_hint(RuntimeError("boom"), anon=False) is None
+    assert storage.get_auth_error_hint(FileNotFoundError("missing"), anon=True) is None
     # Analysis times like 2026-04-03 contain "403"; that is not an auth error.
     exc = OSError("Failed to fetch s3://b/ml/fc2026040300+012CONTROL__dmi_sf")
-    assert storage.auth_error_hint(exc, anon=False) is None
+    assert storage.get_auth_error_hint(exc, anon=False) is None
 
 
 def test_upload_tree_object_store_uses_one_put_and_no_makedirs(tmp_path, monkeypatch):

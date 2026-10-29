@@ -30,9 +30,9 @@ def _settings(**overrides):
 
 
 def _touch_files(root, t, member="CONTROL__dmi", max_hour=1):
-    from zarr_creator.settings import expected_grib_filenames
+    from zarr_creator.settings import make_expected_grib_filenames
 
-    for name in expected_grib_filenames(t, max_hour, member):
+    for name in make_expected_grib_filenames(t, max_hour, member):
         p = os.path.join(root, name)
         with open(p, "w") as f:
             f.write("fake-grib")
@@ -164,10 +164,10 @@ def test_t_analysis_cli_arg_default_and_errors():
     import argparse
 
     from zarr_creator import settings as s
-    from zarr_creator.pipeline.cli_args import t_analysis_arg
+    from zarr_creator.pipeline.cli_args import parse_t_analysis_arg
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--t-analysis", type=t_analysis_arg, default=s.LATEST)
+    parser.add_argument("--t-analysis", type=parse_t_analysis_arg, default=s.LATEST)
     # default is resolved to a real UTC datetime on the 3-hour grid
     t = parser.parse_args([]).t_analysis
     assert t.tzinfo is not None and t.hour % 3 == 0 and t.minute == 0

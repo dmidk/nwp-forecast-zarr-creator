@@ -25,8 +25,8 @@ from ..settings import (
     FILE_TYPES,
     Settings,
     describe_source_auth,
-    expected_grib_filenames,
-    refs_dir_for,
+    make_expected_grib_filenames,
+    make_refs_dir_path,
     require_utc,
 )
 
@@ -58,7 +58,7 @@ def _download_with_hint(urls, settings, profile, anon) -> str:
             urls, settings.src_grib_temp_path, profile, anon
         )
     except Exception as exc:
-        hint = storage.auth_error_hint(exc, anon=anon)
+        hint = storage.get_auth_error_hint(exc, anon=anon)
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
@@ -76,7 +76,7 @@ def build_indexes_and_refs(
     if not storage.is_local_uri(settings.src_grib_root_uri):
         logger.info(f"Remote source auth: {describe_source_auth(anon, profile)}")
 
-    filenames = expected_grib_filenames(
+    filenames = make_expected_grib_filenames(
         t_analysis, settings.max_hour, settings.member_id
     )
     urls = [storage.join(settings.src_grib_root_uri, name) for name in filenames]
@@ -85,7 +85,7 @@ def build_indexes_and_refs(
             settings.src_grib_root_uri, filenames, profile, anon
         )
     except Exception as exc:
-        hint = storage.auth_error_hint(exc, anon=anon)
+        hint = storage.get_auth_error_hint(exc, anon=anon)
         if hint is not None:
             raise RuntimeError(hint) from exc
         raise
@@ -113,7 +113,7 @@ def build_indexes_and_refs(
         _, src_dir = split_protocol(settings.src_grib_root_uri)
         logger.info(f"No staging path set, indexing directly from {src_dir}")
 
-    refs_dir = refs_dir_for(t_analysis, settings)
+    refs_dir = make_refs_dir_path(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
 
     set_local_eccodes_definitions_path()

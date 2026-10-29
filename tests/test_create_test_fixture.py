@@ -15,24 +15,24 @@ def _utc(*args):
 
 
 def _plant_source(uri, t, max_hour=1, member="CONTROL__dmi"):
-    from zarr_creator.settings import expected_grib_filenames
+    from zarr_creator.settings import make_expected_grib_filenames
 
     fs, _ = storage.resolve_fs(uri)
-    for name in expected_grib_filenames(t, max_hour, member):
+    for name in make_expected_grib_filenames(t, max_hour, member):
         fs.pipe(f"{uri.rstrip('/')}/{name}", b"fake-grib:" + name.encode())
 
 
 def test_dest_prefix_includes_suite_and_analysis_time():
     assert (
-        cf.dest_prefix("my-bucket", "dini", _utc(2025, 3, 2, 6))
+        cf.make_dest_prefix("my-bucket", "dini", _utc(2025, 3, 2, 6))
         == "s3://my-bucket/dini/2025-03-02T0600Z"
     )
     assert (
-        cf.dest_prefix("my-bucket", "ig", _utc(2025, 3, 2, 6))
+        cf.make_dest_prefix("my-bucket", "ig", _utc(2025, 3, 2, 6))
         == "s3://my-bucket/ig/2025-03-02T0600Z"
     )
     assert (
-        cf.dest_prefix("memory://my-bucket", "dini", _utc(2025, 3, 2, 6))
+        cf.make_dest_prefix("memory://my-bucket", "dini", _utc(2025, 3, 2, 6))
         == "memory://my-bucket/dini/2025-03-02T0600Z"
     )
 
@@ -51,13 +51,13 @@ def test_invalid_suite_rejected():
 def test_candidate_times_follow_analysis_interval(monkeypatch):
     now = _utc(2025, 3, 2, 7, 30)
     # lags of 3, 6 and 9 hours, floored to the (default) 3-hour grid
-    assert cf.candidate_times(now, attempts=3) == [
+    assert cf.get_candidate_times(now, attempts=3) == [
         _utc(2025, 3, 2, 3),
         _utc(2025, 3, 2, 0),
         _utc(2025, 3, 1, 21),
     ]
     monkeypatch.setenv("ANALYSIS_INTERVAL_HOURS", "1")
-    assert cf.candidate_times(now, attempts=3) == [
+    assert cf.get_candidate_times(now, attempts=3) == [
         _utc(2025, 3, 2, 4),
         _utc(2025, 3, 2, 1),
         _utc(2025, 3, 1, 22),
@@ -86,7 +86,7 @@ def test_resolve_explicit_incomplete_raises():
 
 def test_resolve_auto_finds_recent_complete():
     now = datetime.datetime.now(datetime.timezone.utc)
-    candidates = cf.candidate_times(now)
+    candidates = cf.get_candidate_times(now)
     _plant_source("memory://cf-auto", candidates[1])
     t = cf.resolve_analysis_time(
         None, "memory://cf-auto", 1, "CONTROL__dmi", ("sf", "pl"), None, now=now

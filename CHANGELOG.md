@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Functions that build, look up or compute a value are renamed to verb
+  names, e.g. `grib_filename` → `make_grib_filename`, `refs_dir_for` →
+  `make_refs_dir_path`, `storage_options` → `get_storage_options`,
+  `settings_from_args` → `apply_args_to_settings` and `refs_done` →
+  `is_refs_done`. Command line and environment variables are unchanged.
+
 ### Maintenance
 
 - pin Python 3.12 in the unit-test CI job, since `ubuntu-latest` now comes with Python 3.14, which `eccodeslib` 2.42.0 isn't published for [\#44](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/44), @luca-schmidt
