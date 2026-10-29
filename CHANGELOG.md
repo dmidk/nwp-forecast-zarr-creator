@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `settings_from_args` → `apply_args_to_settings` and `refs_done` →
   `is_refs_done`. Command line and environment variables are unchanged.
 
+### Maintenance
+
+- pin Python 3.12 in the unit-test CI job, since `ubuntu-latest` now comes with Python 3.14, which `eccodeslib` 2.42.0 isn't published for [\#44](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/44), @luca-schmidt
+
 ## [v0.9.0]
 
 This release replaces the bash scripts with a Python-only pipeline. Source GRIB files can be read from S3 (downloaded to a local staging directory, so no S3 mount is needed) or from a local path, and the zarr output can be written to any local or S3 path set with `DST_ZARR_OUTPUT_PATH`. It contains breaking changes to the command line and the container entrypoint, see below. [\#36](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/36), @leifdenby
