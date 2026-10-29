@@ -220,7 +220,7 @@ def test_time_helpers():
         s.make_grib_filename(t, 4, "CONTROL__dmi", "sf")
         == "fc2025030206+004CONTROL__dmi_sf"
     )
-    names = s.get_expected_grib_filenames(t, 1, "CONTROL__dmi")
+    names = s.make_expected_grib_filenames(t, 1, "CONTROL__dmi")
     assert len(names) == 4  # 2 hours x sf/pl
     assert names[0] == "fc2025030206+000CONTROL__dmi_sf"
 

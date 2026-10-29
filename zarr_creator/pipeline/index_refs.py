@@ -24,7 +24,7 @@ from loguru import logger
 
 from .. import storage
 from ..grib_definitions import set_local_eccodes_definitions_path
-from ..settings import Settings, describe_source_auth, get_refs_dir, require_utc
+from ..settings import Settings, describe_source_auth, make_refs_dir_path, require_utc
 from ..suites import get_suite
 
 
@@ -145,7 +145,7 @@ def build_indexes_and_refs(
         _, src_dir = split_protocol(settings.src_grib_root_uri)
         logger.info(f"No staging path set, indexing directly from {src_dir}")
 
-    refs_dir = get_refs_dir(t_analysis, settings)
+    refs_dir = make_refs_dir_path(t_analysis, settings)
     os.makedirs(refs_dir, exist_ok=True)
 
     set_local_eccodes_definitions_path()

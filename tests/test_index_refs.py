@@ -30,9 +30,9 @@ def _settings(**overrides):
 
 
 def _touch_files(root, t, member="CONTROL__dmi", max_hour=1):
-    from zarr_creator.settings import get_expected_grib_filenames
+    from zarr_creator.settings import make_expected_grib_filenames
 
-    for name in get_expected_grib_filenames(t, max_hour, member):
+    for name in make_expected_grib_filenames(t, max_hour, member):
         p = os.path.join(root, name)
         with open(p, "w") as f:
             f.write("fake-grib")

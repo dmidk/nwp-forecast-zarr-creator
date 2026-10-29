@@ -79,7 +79,7 @@ def test_manifest_auth_error_fails_with_hint(monkeypatch):
 
 def test_s3_fixture_end_to_end(tmp_path):
     from zarr_creator.pipeline.index_refs import build_indexes_and_refs
-    from zarr_creator.settings import Settings, get_refs_dir, require_utc
+    from zarr_creator.settings import Settings, make_refs_dir_path, require_utc
 
     src_uri, t_analysis, max_hour, suite_name = _config()
     t_analysis = require_utc(t_analysis)
@@ -103,7 +103,7 @@ def test_s3_fixture_end_to_end(tmp_path):
         src_anon=os.environ.get("SRC_ANON", "").lower() in {"1", "true", "yes"},
     )
     refs_dir = build_indexes_and_refs(t_analysis, settings)
-    assert refs_dir == get_refs_dir(t_analysis, settings)
+    assert refs_dir == make_refs_dir_path(t_analysis, settings)
     assert os.path.isdir(refs_dir)
     assert [f for f in os.listdir(refs_dir) if f.endswith(".json")] != []
 
