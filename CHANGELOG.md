@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.10.0]
+
+This release adds an `ifs` suite that converts ECMWF IFS control forecasts from DMI's ECMWF cache into one `ifs.zarr` per cycle, as a source for ANNA's boundary input, and lets each suite set its own file names, cycle interval and delivery lag. Python functions are renamed to verb names, which doesn't change the command line or environment variables. [\#37](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/37), [\#41](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/41), @leifdenby
 
 ### Added
 
