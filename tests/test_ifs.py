@@ -283,8 +283,9 @@ def test_contract_coords(ifs_zarr):
         ds.prediction_timedelta.values,
         np.array([0, 3], dtype="timedelta64[h]").astype("timedelta64[ns]"),
     )
-    # all delivered levels, as delivered (no 600 hPa)
-    assert ds.level.values.tolist() == list(FIXTURE_LEVELS)
+    # all delivered levels plus the interpolated 600 hPa, sorted
+    assert 600 not in FIXTURE_LEVELS
+    assert ds.level.values.tolist() == sorted([*FIXTURE_LEVELS, 600])
     assert ds.level.attrs["units"] == "hPa"
     # the native grid, in its native order (north to south)
     np.testing.assert_allclose(ds.latitude, np.linspace(LAT_FIRST, LAT_LAST, NJ))
@@ -411,6 +412,24 @@ def test_geopotential_from_geopotential_height(ifs_zarr):
     _assert_field(
         z, config_ifs.G0 * calc_pressure_value("gh", 925, ds.latitude, ds.longitude, 3)
     )
+    assert z.attrs["units"] == "m**2 s**-2"
+
+
+def test_600hpa_interpolated_in_log_pressure(ifs_zarr):
+    """Check 600 hPa is interpolated linearly in ln(p) from 500 and 700 hPa."""
+    ds = ifs_zarr["ds"]
+    lat, lon = ds.latitude, ds.longitude
+    weight = np.log(600 / 500) / np.log(700 / 500)
+    t = _select_step(ds, 0).temperature.sel(level=600)
+    t500, t700 = (calc_pressure_value("t", level, lat, lon, 0) for level in (500, 700))
+    _assert_field(t, (1 - weight) * t500 + weight * t700)
+    # the derived fields get the level too
+    z = _select_step(ds, 0).geopotential.sel(level=600)
+    z500, z700 = (
+        config_ifs.G0 * calc_pressure_value("gh", level, lat, lon, 0)
+        for level in (500, 700)
+    )
+    _assert_field(z, (1 - weight) * z500 + weight * z700)
     assert z.attrs["units"] == "m**2 s**-2"
 
 
