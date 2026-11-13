@@ -10,11 +10,12 @@ The fields are on a regular 0.1 deg lat/lon grid (2101x901, 90N..0N,
 120W..90E), mostly GRIB1 with a few GRIB2 messages mixed in.
 
 The output is a single ``ifs.zarr`` per cycle on the native grid and the
-delivered pressure levels, optionally clipped to a lat/lon box (see
+delivered pressure levels plus ANNA's 600 hPa level (see
+`_add_interpolated_levels`), optionally clipped to a lat/lon box (see
 `clip_to_bounds`). It uses ERA5/WeatherBench2 variable names and dims ``time``
 (analysis time, length 1), ``prediction_timedelta``, ``level`` (hPa),
 ``latitude`` and ``longitude``, as the ANNA boundary input does; regridding
-to ANNA's 0.25 deg box and adding its 600 hPa level are left to ANNA.
+to ANNA's 0.25 deg box is left to ANNA.
 """
 
 import datetime
@@ -33,6 +34,11 @@ LAG_HOURS = 7
 DEFAULT_MEMBER_ID = "control"
 # the source is the shared ECMWF cache, keep the index files with the refs
 INDEX_NEXT_TO_SOURCE = False
+
+# pressure levels ANNA's boundary input needs that IFS doesn't deliver, added
+# by `_add_interpolated_levels` (linearly in ln(p) between the delivered
+# levels around them)
+INTERPOLATED_PRESSURE_LEVELS = [600]
 
 PROJECTION_IDENTIFIER = "latitude_longitude"
 # IFS GRIB1 fields are defined on a sphere with radius 6367470 m
@@ -208,8 +214,9 @@ def _make_static_selector(short_name):
 # Pressure levels in the `dei_dj` files (GRIB1, checked on the 3h file of the
 # 2026-09-28T00Z cycle): 50, 70, 100, 150, 200, 250, 300, 400, 500, 700, 850,
 # 925, 950 and 1000 hPa, with gh, t, r, u, v and w. All of them are written
-# as delivered. There is no geopotential and no specific humidity, so those
-# are derived (see `_calc_geopotential` and `_calc_specific_humidity`).
+# as delivered. There is no 600 hPa, no geopotential and no specific humidity,
+# so those are derived (see `_add_interpolated_levels`, `_calc_geopotential`
+# and `_calc_specific_humidity`).
 
 G0 = 9.80665  # m s-2, used by ECMWF to define geopotential height
 EPSILON = 0.621981  # R_d / R_v as in the IFS
@@ -289,6 +296,40 @@ def calc_specific_humidity_from_relative_humidity(r, t, p):
     return EPSILON * e / (p - (1 - EPSILON) * e)
 
 
+def _add_interpolated_levels(da: xr.DataArray) -> xr.DataArray:
+    """Add `INTERPOLATED_PRESSURE_LEVELS` to the delivered levels.
+
+    Each missing level is interpolated linearly in ln(p) between the nearest
+    delivered levels below and above it (600 hPa between 500 and 700 hPa).
+
+    Parameters
+    ----------
+    da : xarray.DataArray
+        Pressure-level field with a ``level`` coordinate (hPa).
+
+    Returns
+    -------
+    xarray.DataArray
+        The field on the delivered and interpolated levels, sorted by
+        ``level``, with the attributes of ``da``.
+    """
+    available = da.level.values
+    levels = [da]
+    for level in INTERPOLATED_PRESSURE_LEVELS:
+        if level in available:
+            continue
+        below = available[available < level].max()
+        above = available[available > level].min()
+        weight = np.log(level / below) / np.log(above / below)
+        interpolated = (1 - weight) * da.sel(level=below, drop=True) + weight * da.sel(
+            level=above, drop=True
+        )
+        levels.append(interpolated.assign_coords(level=level))
+    da_levels = xr.concat(levels, dim="level").sortby("level")
+    da_levels.attrs = da.attrs
+    return da_levels
+
+
 def _make_pressure_selector(short_name):
     """Make a selector for a pressure-level field.
 
@@ -300,9 +341,10 @@ def _make_pressure_selector(short_name):
     Returns
     -------
     Callable[[xarray.Dataset], xarray.DataArray]
-        Function returning that variable from a converted dataset.
+        Function returning that variable from a converted dataset, with
+        `INTERPOLATED_PRESSURE_LEVELS` added.
     """
-    return lambda ds: ds[short_name]
+    return lambda ds: _add_interpolated_levels(ds[short_name])
 
 
 def _calc_geopotential(ds: xr.Dataset) -> xr.DataArray:
@@ -318,7 +360,7 @@ def _calc_geopotential(ds: xr.Dataset) -> xr.DataArray:
     xarray.DataArray
         Geopotential (m**2 s**-2) with CF attributes.
     """
-    da = ds["gh"] * G0
+    da = _add_interpolated_levels(ds["gh"] * G0)
     da.attrs = dict(
         units="m**2 s**-2",
         long_name="Geopotential",
@@ -343,7 +385,8 @@ def _calc_specific_humidity(ds: xr.Dataset) -> xr.DataArray:
         Specific humidity (kg kg**-1) with CF attributes.
     """
     p = ds.level * 100.0  # hPa -> Pa
-    da = calc_specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
+    q = calc_specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
+    da = _add_interpolated_levels(q)
     da.attrs = dict(
         units="kg kg**-1",
         long_name="Specific humidity",
