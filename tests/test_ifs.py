@@ -283,9 +283,11 @@ def test_contract_coords(ifs_zarr):
         ds.prediction_timedelta.values,
         np.array([0, 3], dtype="timedelta64[h]").astype("timedelta64[ns]"),
     )
-    # all delivered levels plus the interpolated 600 hPa, sorted
-    assert 600 not in FIXTURE_LEVELS
-    assert ds.level.values.tolist() == sorted([*FIXTURE_LEVELS, 600])
+    # all delivered levels plus the interpolated ones, sorted
+    assert not set(config_ifs.INTERPOLATED_PRESSURE_LEVELS) & set(FIXTURE_LEVELS)
+    assert ds.level.values.tolist() == sorted(
+        [*FIXTURE_LEVELS, *config_ifs.INTERPOLATED_PRESSURE_LEVELS]
+    )
     assert ds.level.attrs["units"] == "hPa"
     # the native grid, in its native order (north to south)
     np.testing.assert_allclose(ds.latitude, np.linspace(LAT_FIRST, LAT_LAST, NJ))
