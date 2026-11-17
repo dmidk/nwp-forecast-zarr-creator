@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `ifs` suite: adds the 600 hPa level, which IFS doesn't deliver and ANNA's
   boundary input needs, interpolated linearly in ln(p) between 500 and
-  700 hPa. All delivered levels are still written. @luca-schmidt
+  700 hPa. All delivered levels are still written.
+  [\#46](https://github.com/dmidk/nwp-forecast-zarr-creator/pull/46), @luca-schmidt
 
 ## [v0.10.0]
 
