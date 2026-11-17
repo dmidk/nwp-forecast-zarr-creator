@@ -23,6 +23,7 @@ from collections import OrderedDict
 
 import numpy as np
 import xarray as xr
+from loguru import logger
 
 FILENAME_PREFIX = "dei_dj_ifs-ens-cf_od_oper_fc"
 STEP_HOURS = 3
@@ -317,6 +318,10 @@ def _add_interpolated_levels(da: xr.DataArray) -> xr.DataArray:
     levels = [da]
     for level in INTERPOLATED_PRESSURE_LEVELS:
         if level in available:
+            logger.warning(
+                f"level {level} of {da.name} does not need to be interpolated as it "
+                "already exists"
+            )
             continue
         below = available[available < level].max()
         above = available[available > level].min()
@@ -386,7 +391,7 @@ def _calc_specific_humidity(ds: xr.Dataset) -> xr.DataArray:
     """
     p = ds.level * 100.0  # hPa -> Pa
     q = calc_specific_humidity_from_relative_humidity(ds["r"], ds["t"], p)
-    da = _add_interpolated_levels(q)
+    da = _add_interpolated_levels(q.rename("q"))
     da.attrs = dict(
         units="kg kg**-1",
         long_name="Specific humidity",
