@@ -323,8 +323,14 @@ def _add_interpolated_levels(da: xr.DataArray) -> xr.DataArray:
                 "already exists"
             )
             continue
-        below = available[available < level].max()
-        above = available[available > level].min()
+        below = available[available < level]
+        above = available[available > level]
+        if below.size == 0 or above.size == 0:
+            raise ValueError(
+                f"Cannot interpolate level {level} hPa of {da.name}: it lies outside "
+                f"the delivered levels ({available.min()}..{available.max()} hPa)"
+            )
+        below, above = below.max(), above.min()
         weight = np.log(level / below) / np.log(above / below)
         interpolated = (1 - weight) * da.sel(level=below, drop=True) + weight * da.sel(
             level=above, drop=True
