@@ -83,13 +83,16 @@ and step, 0.1° lat/lon). It writes a single `ifs.zarr` per cycle with:
 - dims `time` (analysis time), `prediction_timedelta`, `level` (hPa),
   `latitude` and `longitude`
 - the native 0.1° grid (latitudes north to south) and all delivered pressure
-  levels (50–1000 hPa, no 600 hPa), optionally clipped to a lat/lon box
+  levels (50–1000 hPa) plus 600 hPa, which IFS doesn't deliver and ANNA
+  needs, interpolated linearly in ln(p) between 500 and 700 hPa; optionally
+  clipped to a lat/lon box
 
 There's no regridding. ANNA's boundary contract (a 0.25° ERA5 grid over lat
 40.0–72.0, lon −27.0–39.5 with 8 levels including 600 hPa, see the header of
 `src/anna_inference/boundary/ifs_7deg_model1_config.yaml` in
 [dmidk/mlwp-inference-container-anna](https://github.com/dmidk/mlwp-inference-container-anna))
-is left to ANNA's own pipeline, which regrids this output.
+is left to ANNA's own pipeline, which regrids this output and selects its 8
+levels.
 
 To keep the output small, clip it with `--clip-lat-min`, `--clip-lat-max`,
 `--clip-lon-min` and `--clip-lon-max` (env `CLIP_LAT_MIN` etc.), in degrees
@@ -124,13 +127,15 @@ uv run python -m zarr_creator run --suite-name ifs \
 ```
 
 The variable mapping (IFS shortName → output name) is in
-`zarr_creator/config_ifs.py`. Two pressure-level fields aren't delivered as
-ERA5 has them, so they are derived:
+`zarr_creator/config_ifs.py`. Two pressure-level fields and one level aren't
+delivered as ERA5 has them, so they are derived:
 
 - `geopotential` = geopotential height `gh` × 9.80665 (exact)
 - `specific_humidity` comes from relative humidity `r` and temperature `t`,
   using the IFS's mixed-phase saturation vapour pressure. That inverts how
   the IFS defines `r`, so it's close to exact.
+- the 600 hPa level of all pressure-level fields is interpolated linearly in
+  ln(p) between 500 and 700 hPa, as IFS doesn't deliver it
 
 #### How the IFS output lines up with DINI in ANNA
 
@@ -178,8 +183,8 @@ Where the IFS boundary still differs from training:
 
 - it is a forecast, not a reanalysis, and is normalised with the ERA5
   training statistics
-- `geopotential` and `specific_humidity` are derived here (see above), and
-  ANNA's pipeline regrids to 0.25° and interpolates the 600 hPa level
+- `geopotential` and `specific_humidity` and the 600 hPa level are derived
+  here (see above), and ANNA's pipeline regrids to 0.25°
 - the static fields (`land_sea_mask`, `geopotential_at_surface`) come from
   IFS, not ERA5
 
