@@ -80,6 +80,7 @@ def write_output_zarrs(
         compute=True,
         consolidated=True,
         zarr_format=ZARR_FORMAT,
+        write_empty_chunks=True,
     )
 
     logger.info("done!")
