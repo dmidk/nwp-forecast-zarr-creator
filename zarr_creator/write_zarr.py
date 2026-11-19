@@ -80,9 +80,6 @@ def write_output_zarrs(
         compute=True,
         consolidated=True,
         zarr_format=ZARR_FORMAT,
-        # zarr-python 3 skips chunks equal to the dtype's default when a v2
-        # array has no fill value (e.g. a time coordinate of just [0]), and
-        # zarr-python 2 then reads them as undefined: write every chunk
         write_empty_chunks=True,
     )
 
